@@ -1,0 +1,48 @@
+task: CifarFed
+synthesizer: Pattern
+
+
+batch_size: 64
+test_batch_size: 100
+lr: 0.1
+momentum: 0.9
+decay: 0.0005
+epochs: 350
+save_on_epochs: []
+optimizer: SGD
+log_interval: 100
+
+pretrained: False
+
+scheduler: False
+
+poisoning_proportion: 0.5
+backdoor_label: 8
+
+loss_balance: MGDA
+mgda_normalize: none
+
+save_model: True
+log: True
+tb: True
+report_train_loss: False
+
+transform_train: True
+
+fl: True
+fl_no_models: 10
+fl_local_epochs: 2
+fl_total_participants: 100
+fl_eta: 10
+fl_sample_dirichlet: False
+fl_dirichlet_alpha: None
+fl_diff_privacy:  False
+fl_dp_clip: None
+fl_dp_noise: None
+
+fl_number_of_adversaries: 0
+fl_weight_scale: 100
+
+loss_tasks:
+  - backdoor
+  - normal
