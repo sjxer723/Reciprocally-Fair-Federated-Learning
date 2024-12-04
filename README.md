@@ -3,10 +3,8 @@
 This repo contains the source codes of our work "You Get What You Give: Reciprocal Fair Federated Learning". The codes for running the dataset MNIST and CIFAR-10 are respectively put into the directories `MNIST/` and `CIFAR-10/`. Our codes is based on the open-sourced framework [backdoor101](https://github.com/ebagdasa/backdoors101).
 
 ## Installation
-For each of the two directories, run the following commands:
-
-* Install all dependencies: `pip install -r requirements.txt`
-* Create two directories: `runs/` and `saved_models/`
+First instance the dependencies by `pip install -r requirements.txt`.
+For each of the two directories, create two directories: `runs/` and `saved_models/`
 
 ## Repeating Experiments
 Our expermental results are put into the directory `output/`. You can also repeat the experments by the following commands:
