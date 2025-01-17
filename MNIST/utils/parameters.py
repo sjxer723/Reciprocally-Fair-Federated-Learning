@@ -113,7 +113,6 @@ class Params:
     fl_number_of_adversaries: int = 0
     fl_single_epoch_attack: int = None
     fl_weight_scale: int = 1
-    fl_client_degrees: List[int] = None
     fl_server_degrees: List[int] = None
     fl_client_data: List[int] = None
     fl_gamma: int = -1

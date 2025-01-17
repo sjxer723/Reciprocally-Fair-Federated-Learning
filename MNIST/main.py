@@ -5,6 +5,7 @@ import copy
 from threading import Thread
 import copy
 import random
+import itertools
 
 import yaml
 from prompt_toolkit import prompt
@@ -19,7 +20,7 @@ logger = logging.getLogger('logger')
 ## MNIST
 max_resource = 100
 d_s = 5
-cost = [random.uniform(0.004, 0.005) for _ in range(10)]
+cost = [random.uniform(0.004, 0.005) for _ in range(100)]
 delta = 1
 alpha = 0.384
 beta = 0.4
@@ -73,57 +74,148 @@ def test(hlpr: Helper, model, test_loader):
 
 def fl_run(hlpr: Helper):
     hlpr.task.model = hlpr.task.build_model()
-    round_participants = hlpr.task.sample_users_for_round()
+    global_model = hlpr.task.model
     s_dict = {}
-    for participant in round_participants:
-        s_dict[participant.user_id] = 1.0
+    for participant in range(hlpr.params.fl_total_participants):
+        s_dict[participant] = 1.0
     logger.info(s_dict)
     
-    print(len(round_participants[0].test_loader))
+    # print(len(round_participants[0].test_loader))
     for epoch in range(hlpr.params.epochs + 1):
-        global_model = hlpr.task.model
-        grads, accs = [], []
+        round_participants = hlpr.task.sample_users_for_round()
+    
+        grads, grads1 = [], []
+        grads_dict, grads1_dict = {}, {}
         
+        print([agent.user_id for agent in round_participants])
         remaining_clients = len(round_participants)
         while remaining_clients > 0:
             thread_pool_size = min(remaining_clients, hlpr.params.max_threads)
             threads = []
             for user in round_participants[len(round_participants) - remaining_clients: \
                                     len(round_participants) - remaining_clients + thread_pool_size]:
-                thread = ClientThread(user, hlpr, copy.deepcopy(global_model), user.user_id, s_dict)
+                thread = ClientThread(user, hlpr, copy.deepcopy(global_model), user.user_id, s_dict, "Train", round_participants)
                 threads.append(thread)
                 thread.start()
             for thread in threads:
-                user_id, grad, acc, s = thread.join()
+                user_id, grad, grad1, acc = thread.join()
                 grads.append(grad)
-                accs.append(acc)
-                s_dict[user_id] = s
+                grads_dict[user_id] = grad
+                grads1.append(grad1)
+                grads1_dict[user_id] = grad1
+                # s_dict[user_id] = s
             remaining_clients -= thread_pool_size
         
-        logger.info(s_dict)
-        logger.info(', '.join(map(str, accs)))
+        ## Update all the shares
+        num_perms = 2
+        sampled_agents = [agent.user_id for agent in round_participants]
+        model_for_measure_share1 = copy.deepcopy(global_model)
+        model_for_measure_share2 = copy.deepcopy(global_model)
+        avg_shapley_share = {agent.user_id: 0 for agent in round_participants}
+        for _ in range(num_perms):
+            perm = sampled_agents
+            random.shuffle(perm)
+            shapley_share = {agent.user_id: 0 for agent in round_participants}
 
+            for j in range(1, len(perm)+1):
+                agent_i = perm[j-1]
+                agents_with_i = perm[:j]
+                
+                ## Measure the sum of accuracies when using the first j datasets
+                new_state_dict = dict()
+                for name, _ in grads_dict[agent_i].items():
+                    new_state_dict[name] = model_for_measure_share1.state_dict()[name]
+                for name in new_state_dict.keys():
+                    for agent in agents_with_i:
+                        new_state_dict[name].sub_(grads_dict[agent][name] * hlpr.params.lr)
+                model_for_measure_share1.load_state_dict(new_state_dict, strict=False)
+                remaining_clients = len(round_participants)
+                accs = []
+                while remaining_clients > 0:
+                    thread_pool_size = min(remaining_clients, hlpr.params.max_threads)
+                    threads = []
+                    for user in round_participants[len(round_participants) - remaining_clients: \
+                                            len(round_participants) - remaining_clients + thread_pool_size]:
+                        thread = ClientThread(user, hlpr, copy.deepcopy(model_for_measure_share1), user.user_id, s_dict, "Test", round_participants)
+                        threads.append(thread)
+                        thread.start()
+                    for thread in threads:
+                        acc = thread.join()
+                        accs.append(acc)
+                    remaining_clients -= thread_pool_size
+
+                ## Measure the sum of accuracies when using the first j datasets 
+                #  with s_j improved by one
+                new_state_dict = dict()
+                for name, _ in grads_dict[agent_i].items():
+                    new_state_dict[name] = model_for_measure_share2.state_dict()[name]
+                for name in new_state_dict.keys():
+                    for agent in agents_with_i[:-1]:
+                        new_state_dict[name].sub_(grads_dict[agent][name] * hlpr.params.lr)
+                    new_state_dict[name].sub_(grads1_dict[agent_i][name] * hlpr.params.lr)
+                model_for_measure_share2.load_state_dict(new_state_dict, strict=False)
+                
+                remaining_clients = len(round_participants)
+                acc1s = []
+                while remaining_clients > 0:
+                    thread_pool_size = min(remaining_clients, hlpr.params.max_threads)
+                    threads = []
+                    for user in round_participants[len(round_participants) - remaining_clients: \
+                                            len(round_participants) - remaining_clients + thread_pool_size]:
+                        thread = ClientThread(user, hlpr, copy.deepcopy(model_for_measure_share2), user.user_id, s_dict, "Test", round_participants)
+                        threads.append(thread)
+                        thread.start()
+                    for thread in threads:
+                        acc = thread.join()
+                        acc1s.append(acc)
+                    remaining_clients -= thread_pool_size
+
+                shapley_share[agent_i] = sum(acc1s) - sum(accs)
+
+            for i in range(len(perm)):
+                agent_i = perm[i]
+                avg_shapley_share[agent_i] += shapley_share[agent_i]
+        
+        for agent_i in round_participants:
+            avg_shapley_share[agent_i.user_id] = avg_shapley_share[agent_i.user_id] / num_perms
+        print(avg_shapley_share)
+
+        for agent in round_participants:
+            _s = s_dict[agent.user_id] + delta * avg_shapley_share[agent.user_id]
+            if _s < 0 or _s >= max_resource:
+                continue
+            else:
+                s_dict[agent.user_id] = _s
+
+        ## Update the global model
         new_state_dict = dict()
         for name, _ in grads[0].items():
             new_state_dict[name] = global_model.state_dict()[name]
         for name in new_state_dict.keys():
             for grad in grads:
                 new_state_dict[name].sub_(grad[name] * hlpr.params.lr)
-
         global_model.load_state_dict(new_state_dict, strict=False)
 
+        logger.info(s_dict)
+        logger.info(', '.join(map(str, accs)))
+        logger.warning('Epoch: {} Sum of s_i: {}'.format(epoch, sum(s_dict.values())))
         logger.warning('Epoch: {}, Sum of Accs: {:.3f}, Sum of s_i: {}'.format(epoch, sum(accs), sum(s_dict.values())))
 
-
 class ClientThread(Thread):
-    def __init__(self, user, hlpr, global_model, id, s_all):
+    def __init__(self, user, hlpr, global_model, _id, s_all, task, sampled_agents, grads=None, grads1=None, _lr = 0.01):
         super().__init__()
         self.user = user
         self.hlpr = hlpr
         self.model = global_model
-        self.id = id
+        self.id = _id
         self.s_all = s_all
-        self.s = s_all[id]
+        self.s = s_all[_id]
+        self.sampled_agents = [agent.user_id for agent in sampled_agents]
+        self.eps = 0.001
+        self.task = task
+        self.grads = grads
+        self.grads1 = grads1
+        self.learning_rate = _lr
         self._return = None
 
     def cost(self, s):
@@ -137,50 +229,133 @@ class ClientThread(Thread):
     
     def utility(self, s_all, s):
         return a(s_all) - self.cost(s)
+
+
+    # def update_share_by_real_contribution(self):
+    #     n = len(self.sampled_agents)
+    #     # num_perms = int(n * np.log(n) / self.eps) # sample n * log(n) / epsilon permutations
+    #     num_perms = 1
+    #     shapley_shares = dict()
+        
+    #     for agent_i in self.sampled_agents:
+    #         shapley_share_of_agent_i = []
+    #         for iter_idx in range(num_perms):
+    #             perm = self.sampled_agents
+    #             random.shuffle(perm)
+    #             agent_i_idx = perm.index(agent_i)
+    #             agents_before_i = perm[:agent_i_idx]
+    #             global_model_with_updated_share = copy.deepcopy(self.model)
+
+    #             new_state_dict = dict()
+    #             for name, _ in self.grads[agent_i].items():
+    #                 new_state_dict[name] = self.model.state_dict()[name]
+    #             for name in new_state_dict.keys():
+    #                 for agent in agents_before_i:
+    #                     new_state_dict[name].sub_(self.grads[agent][name] * self.learning_rate)
+    #             self.model.load_state_dict(new_state_dict, strict=False)
+    #         #      while remaining_clients > 0:
+    #         # thread_pool_size = min(remaining_clients, hlpr.params.max_threads)
+    #         # threads = []
+    #         # for user in round_participants[len(round_participants) - remaining_clients: \
+    #         #                         len(round_participants) - remaining_clients + thread_pool_size]:
+                
+    #         #     thread = ClientThread(user, hlpr, copy.deepcopy(global_model), user.user_id, s_dict, "Update", \
+    #         #                           round_participants, grads_dict, grads1_dict, hlpr.params.lr)
+    #         #     threads.append(thread)  
+    #         #     thread.start()
+    #         # for thread in threads:
+    #         #     user_id, s = thread.join()
+    #         #     s_dict[user_id] = s
+    #         # remaining_clients -= thread_pool_size
+
+    #         #     acc = self.test(self.model)
+                
+    #             new_state_dict = dict()
+    #             for name, _ in self.grads[agent_i].items():
+    #                 new_state_dict[name] = self.model.state_dict()[name]
+    #             for name in new_state_dict.keys():
+    #                 for agent in agents_before_i:
+    #                     new_state_dict[name].sub_(self.grads[agent][name] * self.learning_rate)
+    #                 new_state_dict[name].sub_(self.grads1[agent_i][name] * self.learning_rate)
+    #             global_model_with_updated_share.load_state_dict(new_state_dict, strict=False)
+    #             acc1 = self.test(global_model_with_updated_share)
+    #             print(acc1, acc)
+    #             shapley_share_of_agent_i.append(acc1 - acc)
+
+    #         shapley_shares[agent_i] = sum(shapley_share_of_agent_i) / num_perms
+    #     print(shapley_shares)
     
     def run(self):
-        fl = FLInstance(len(self.s_all), self.s_all, alpha, beta, 0.01)
-        acc = self.test(self.model)
-        s = self.s
-        s_all = self.s_all
-        criterion = torch.nn.CrossEntropyLoss()
-        self.model.train()
-        for i, data in enumerate(self.user.train_loader):
-            batch = self.hlpr.task.get_batch(i, data)
-            logits = self.model(batch.inputs)
-            loss = criterion(logits, batch.labels)
-            loss.backward()
-            if i >= s:
-                break
-        
-        grad = {}
-        if s != 0:
+        if self.task == "Train":
+            acc = self.test(self.model)
+            criterion = torch.nn.CrossEntropyLoss()
+            self.model.train()
+
+            self.model.zero_grad()
+            for i, data in enumerate(self.user.train_loader):
+                if i + 1 > self.s:
+                    break
+                batch = self.hlpr.task.get_batch(i, data)
+                logits = self.model(batch.inputs)
+                loss = criterion(logits, batch.labels)
+                loss.backward()
+            grad = {}
+            if int(self.s) != 0:
+                for name, param in self.model.named_parameters():
+                    if param.requires_grad:
+                        grad[name] = param.grad / self.s
+            else:
+                for name, param in self.model.named_parameters():
+                    if param.requires_grad:
+                        grad[name] = torch.zeros_like(param)
+            
+            acc= self.test(self.model)
+            # One more round for computing the gradient of shapley share
+            grad1 = {}
+            s_delta = 10
+            self.model.zero_grad()
+            for i, data in enumerate(self.user.train_loader):
+                if i + 1 > self.s + s_delta:
+                    break
+                batch = self.hlpr.task.get_batch(i, data)
+                logits = self.model(batch.inputs)
+                loss = criterion(logits, batch.labels)
+                loss.backward()
             for name, param in self.model.named_parameters():
                 if param.requires_grad:
-                    grad[name] = param.grad / self.s
-        else:
-            for name, param in self.model.named_parameters():
-                if param.requires_grad:
-                    grad[name] = torch.zeros_like(param)
+                    grad1[name] = param.grad / (self.s + s_delta)
+            acc1 = self.test(self.model)
+
+            if acc != acc1:
+                print("Before:", acc, " After:", self.test(self.model))
+
+            self._return = self.user.user_id, grad, grad1, acc
+
+        elif self.task == "Update":
+            s_all = self.s_all
+            # self.update_share_by_real_contribution()
+            fl = FLInstance(len(self.s_all), self.s_all, alpha, beta, 0.01)
+            if self.hlpr.params.method == "br-shap":
+                # FedBR-SV, ∂d/∂s = ∂φ/∂s - c
+                d = fl.compute_shapley_value_derivative(self.id) - self.cost_gradient()
+            elif self.hlpr.params.method == "br":
+                # FedBR, ∂d/∂s = ∂a/∂s - c
+                d = a_derivative(s_all.values()) - self.cost_gradient()    
+            elif self.hlpr.params.method == "br-bg":
+                # FedBR-BG, ∂d/∂s = ∂a/∂s - (1-β)*c
+                d = a_derivative(s_all.values()) - (1 - cost_scalar_beta) * self.cost_gradient()
+                # print(d)   
+            else:
+                s_all_add_delta_s = s_all.copy()
+                s_all_add_delta_s[self.id] += d_s
+                d = (a(s_all_add_delta_s.values()) - a(s_all.values())) / d_s - self.cost_gradient()
+            s_ = self.s + delta * d
+            if not (s_ > max_resource or s_ < 0):
+                self.s = s_
+            self._return = self.user.user_id, self.s
         
-        if self.hlpr.params.method == "br-shap":
-            # FedBR-SV, ∂d/∂s = ∂φ/∂s - c
-            d = fl.compute_shapley_value_derivative(self.id) - self.cost_gradient()
-        elif self.hlpr.params.method == "br":
-            # FedBR, ∂d/∂s = ∂a/∂s - c
-            d = a_derivative(s_all.values()) - self.cost_gradient()    
-        elif self.hlpr.params.method == "br-bg":
-            # FedBR-BG, ∂d/∂s = ∂a/∂s - (1-β)*c
-            d = a_derivative(s_all.values()) - (1 - cost_scalar_beta) * self.cost_gradient()
-            # print(d)   
-        else:
-            s_all_add_delta_s = s_all.copy()
-            s_all_add_delta_s[self.id] += d_s
-            d = (a(s_all_add_delta_s.values()) - a(s_all.values())) / d_s - self.cost_gradient()
-        s_ = s + delta * d
-        if not (s_ > max_resource or s_ < 0):
-            s = s_
-        self._return = self.user.user_id, grad, acc, s
+        elif self.task == "Test":
+            self._return = self.test(self.model)
 
     def test(self, model):
         correct, total = 0, 0

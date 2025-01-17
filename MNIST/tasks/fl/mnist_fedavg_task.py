@@ -157,7 +157,7 @@ class MNIST_FedAvgTask:
         sampled_ids = random.sample(
             range(self.params.fl_total_participants),
             self.params.fl_no_models)
-
+        
         sampled_users = []
         for pos, user_id in enumerate(sampled_ids):
             train_loader = self.fl_train_loaders[user_id]
@@ -361,7 +361,7 @@ class MNIST_FedAvgTask:
         each_worker_label = [each_worker_label[i] for i in random_order]
 
         train_loaders, test_loaders = [], []
-        transform_list = [transforms.RandomRotation((degree, degree)) for degree in self.params.fl_client_degrees]
+        transform_list = [transforms.RandomRotation((0, 0)) for _ in range(num_workers)]
         for i in range(len(each_worker_data)):
             train_set = ClientDataset(each_worker_data[i], each_worker_label[i], transform_list[i])
             if self.params.fl_client_data is not None:

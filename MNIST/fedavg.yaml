@@ -28,10 +28,7 @@ transform_train: False
 
 fl_client_train_ratio: 0.9091
 fl_no_models: 10
-fl_total_participants: 10
-fl_client_data: [3000, 3000, 3000, 3000, 3000, 3000, 3000, 3000, 3000, 3000]
-
-fl_client_degrees: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+fl_total_participants: 100
 
 fl_eta: 1
 fl_q: 0.1
