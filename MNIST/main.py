@@ -107,7 +107,7 @@ def fl_run(hlpr: Helper):
             remaining_clients -= thread_pool_size
         
         ## Update all the shares
-        num_perms = 2
+        num_perms = 1
         sampled_agents = [agent.user_id for agent in round_participants]
         model_for_measure_share1 = copy.deepcopy(global_model)
         model_for_measure_share2 = copy.deepcopy(global_model)
@@ -181,7 +181,7 @@ def fl_run(hlpr: Helper):
         print(avg_shapley_share)
 
         for agent in round_participants:
-            _s = s_dict[agent.user_id] + delta * avg_shapley_share[agent.user_id]
+            _s = s_dict[agent.user_id] + delta * (avg_shapley_share[agent.user_id] - cost[agent.user_id])
             if _s < 0 or _s >= max_resource:
                 continue
             else:
