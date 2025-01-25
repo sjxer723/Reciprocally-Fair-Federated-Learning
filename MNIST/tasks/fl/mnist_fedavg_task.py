@@ -9,7 +9,7 @@ import math
 import numpy as np
 from torch.utils.data.dataloader import DataLoader, Dataset
 from torch.utils.data.sampler import SubsetRandomSampler
-from torch.utils.data import random_split
+from torch.utils.data import random_split, ConcatDataset
 from torchvision.utils import save_image
 import torch
 import torchvision
@@ -169,6 +169,20 @@ class MNIST_FedAvgTask:
 
         return sampled_users
 
+    def all_users(self) -> List[FLUser]:
+        all_ids = range(self.params.fl_total_participants)
+        print("fl_total_participants: ", self.params.fl_total_participants)
+        all_users = []
+        for pos, user_id in enumerate(all_ids):
+            train_loader = self.fl_train_loaders[user_id]
+            test_loader = self.fl_test_loaders[user_id]
+            compromised = self.check_user_compromised(user_id)
+            user = FLUser(user_id, compromised=compromised,
+                          train_loader=train_loader, test_loader=test_loader)
+            all_users.append(user)
+
+        return all_users
+        
     def check_user_compromised(self, user_id):
         """Check if the sampled user is compromised for the attack.
 
@@ -392,6 +406,17 @@ class MNIST_FedAvgTask:
         
         return train_loaders, test_loaders
 
+    def merge_test_data(self):
+        union_test_data = self.fl_test_loaders[0]
+
+        # for test_loader in self.fl_test_loaders[1:]:
+        #     union_test_dataset = ConcatDataset([union_test_data.dataset + test_loader.dataset])
+        #     union_test_data = DataLoader(union_test_dataset)
+
+        for i in range(len(self.fl_test_loaders)):
+            self.fl_test_loaders[i] = union_test_data
+        logger.info("Successfully union all testing data!")
+        
 class ClientDataset(Dataset):
     def __init__(self, data_list, label_list, transform):
         super().__init__()

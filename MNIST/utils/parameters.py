@@ -117,7 +117,8 @@ class Params:
     fl_client_data: List[int] = None
     fl_gamma: int = -1
     fl_server_model_path: str = None
-
+    idtest: bool = False
+    
     # Clean dataset params
     clean_ratio: float = 0.1
     clean_classes: List[int] = None

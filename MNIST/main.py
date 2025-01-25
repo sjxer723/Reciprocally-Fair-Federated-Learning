@@ -21,9 +21,10 @@ logger = logging.getLogger('logger')
 max_resource = 100
 d_s = 5
 cost = [random.uniform(0.004, 0.005) for _ in range(100)]
-delta = 1
+delta = 10
 alpha = 0.384
 beta = 0.4
+s_delta = 10
 cost_scalar_beta = 0.8
 
 def a(s_all):
@@ -98,12 +99,11 @@ def fl_run(hlpr: Helper):
                 threads.append(thread)
                 thread.start()
             for thread in threads:
-                user_id, grad, grad1, acc = thread.join()
+                user_id, grad, grad1 = thread.join()
                 grads.append(grad)
                 grads_dict[user_id] = grad
                 grads1.append(grad1)
                 grads1_dict[user_id] = grad1
-                # s_dict[user_id] = s
             remaining_clients -= thread_pool_size
         
         ## Update all the shares
@@ -129,7 +129,7 @@ def fl_run(hlpr: Helper):
                     for agent in agents_with_i:
                         new_state_dict[name].sub_(grads_dict[agent][name] * hlpr.params.lr)
                 model_for_measure_share1.load_state_dict(new_state_dict, strict=False)
-                remaining_clients = len(round_participants)
+                remaining_clients = 1 if hlpr.params.idtest else len(round_participants)
                 accs = []
                 while remaining_clients > 0:
                     thread_pool_size = min(remaining_clients, hlpr.params.max_threads)
@@ -155,7 +155,7 @@ def fl_run(hlpr: Helper):
                     new_state_dict[name].sub_(grads1_dict[agent_i][name] * hlpr.params.lr)
                 model_for_measure_share2.load_state_dict(new_state_dict, strict=False)
                 
-                remaining_clients = len(round_participants)
+                remaining_clients = 1 if hlpr.params.idtest else len(round_participants)
                 acc1s = []
                 while remaining_clients > 0:
                     thread_pool_size = min(remaining_clients, hlpr.params.max_threads)
@@ -178,14 +178,34 @@ def fl_run(hlpr: Helper):
         
         for agent_i in round_participants:
             avg_shapley_share[agent_i.user_id] = avg_shapley_share[agent_i.user_id] / num_perms
+            if helper.params.idtest:
+                avg_shapley_share[agent_i.user_id] *= helper.params.fl_no_models
         print(avg_shapley_share)
 
         for agent in round_participants:
-            _s = s_dict[agent.user_id] + delta * (avg_shapley_share[agent.user_id] - cost[agent.user_id])
+            _s = s_dict[agent.user_id] + delta * (avg_shapley_share[agent.user_id] / s_delta - cost[agent.user_id])
             if _s < 0 or _s >= max_resource:
                 continue
             else:
                 s_dict[agent.user_id] = _s
+        
+        accs = []
+        if epoch % 10 == 0:
+            accs = []
+            all_users = hlpr.task.all_users()
+            remaining_clients = len(all_users)
+            while remaining_clients > 0:
+                thread_pool_size = min(remaining_clients, hlpr.params.max_threads)
+                threads = []
+                for user in all_users[len(all_users) - remaining_clients: \
+                                        len(all_users) - remaining_clients + thread_pool_size]:
+                    thread = ClientThread(user, hlpr, copy.deepcopy(global_model), user.user_id, s_dict, "Test", round_participants)
+                    threads.append(thread)
+                    thread.start()
+                for thread in threads:
+                    acc = thread.join()
+                    accs.append(acc)
+                remaining_clients -= thread_pool_size
 
         ## Update the global model
         new_state_dict = dict()
@@ -199,7 +219,7 @@ def fl_run(hlpr: Helper):
         logger.info(s_dict)
         logger.info(', '.join(map(str, accs)))
         logger.warning('Epoch: {} Sum of s_i: {}'.format(epoch, sum(s_dict.values())))
-        logger.warning('Epoch: {}, Sum of Accs: {:.3f}, Sum of s_i: {}'.format(epoch, sum(accs), sum(s_dict.values())))
+        logger.warning('Epoch: {}, Sum of Accs: {:.3f}, Len of Accs: {}, Sum of s_i: {}'.format(epoch, sum(accs), len(accs), sum(s_dict.values())))
 
 class ClientThread(Thread):
     def __init__(self, user, hlpr, global_model, _id, s_all, task, sampled_agents, grads=None, grads1=None, _lr = 0.01):
@@ -287,7 +307,7 @@ class ClientThread(Thread):
     
     def run(self):
         if self.task == "Train":
-            acc = self.test(self.model)
+            # acc = self.test(self.model)
             criterion = torch.nn.CrossEntropyLoss()
             self.model.train()
 
@@ -309,10 +329,8 @@ class ClientThread(Thread):
                     if param.requires_grad:
                         grad[name] = torch.zeros_like(param)
             
-            acc= self.test(self.model)
             # One more round for computing the gradient of shapley share
             grad1 = {}
-            s_delta = 10
             self.model.zero_grad()
             for i, data in enumerate(self.user.train_loader):
                 if i + 1 > self.s + s_delta:
@@ -324,12 +342,12 @@ class ClientThread(Thread):
             for name, param in self.model.named_parameters():
                 if param.requires_grad:
                     grad1[name] = param.grad / (self.s + s_delta)
-            acc1 = self.test(self.model)
+            # acc1 = self.test(self.model)
 
-            if acc != acc1:
-                print("Before:", acc, " After:", self.test(self.model))
+            # if acc != acc1:
+            #     print("Before:", acc, " After:", self.test(self.model))
 
-            self._return = self.user.user_id, grad, grad1, acc
+            self._return = self.user.user_id, grad, grad1
 
         elif self.task == "Update":
             s_all = self.s_all
@@ -381,6 +399,8 @@ if __name__ == '__main__':
     parser.add_argument('--params', dest='params', default='fedavg.yaml')
     parser.add_argument('--name', dest='name', default='test', help='Tensorboard name')
     parser.add_argument('--method', dest='method', default='br-shap', help='Tensorboard name')
+    parser.add_argument('--idtest', dest='idtest', action='store_true', default=False, help='whether to use identical testing data')
+    
     
     args = parser.parse_args()
     with open(args.params) as f:
@@ -389,10 +409,14 @@ if __name__ == '__main__':
     params['current_time'] = datetime.now().strftime('%b.%d_%H.%M.%S')
     params['name'] = args.name
     params['method'] = args.method
+    params['idtest'] = args.idtest
     helper = Helper(params)
+    if args.idtest:
+        print("id test")
+        helper.task.merge_test_data()
 
-    if args.method != "br-shap":
-        delta = 3    
+    # if args.method != "br-shap":
+    #     delta = 10    
     try:
         fl_run(helper)
     except (KeyboardInterrupt):
