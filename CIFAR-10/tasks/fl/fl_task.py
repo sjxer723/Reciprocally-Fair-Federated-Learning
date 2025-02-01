@@ -6,6 +6,8 @@ from typing import List, Any, Dict
 from metrics.accuracy_metric import AccuracyMetric
 from metrics.test_loss_metric import TestLossMetric
 from tasks.fl.fl_user import FLUser
+from torch.utils.data.dataloader import DataLoader, Dataset
+from torch.utils.data import random_split, ConcatDataset
 import torch
 import logging
 from torch.nn import Module
@@ -56,6 +58,20 @@ class FederatedLearningTask(Task):
 
         return sampled_users
 
+    def all_users(self) -> List[FLUser]:
+        all_ids = range(self.params.fl_total_participants)
+        print("fl_total_participants: ", self.params.fl_total_participants)
+        all_users = []
+        for pos, user_id in enumerate(all_ids):
+            train_loader = self.fl_train_loaders[user_id]
+            test_loader = self.fl_test_loaders[user_id]
+            compromised = self.check_user_compromised(user_id, pos, user_id)
+            user = FLUser(user_id, compromised=compromised,
+                          train_loader=train_loader, test_loader=test_loader)
+            all_users.append(user)
+
+        return all_users
+    
     def check_user_compromised(self, epoch, pos, user_id):
         """Check if the sampled user is compromised for the attack.
 
@@ -160,3 +176,14 @@ class FederatedLearningTask(Task):
                 return True
 
         return False
+
+    def merge_test_data(self):
+        union_test_data = self.fl_test_loaders[0]
+
+        # for test_loader in self.fl_test_loaders[1:5]:
+        #     union_test_dataset = ConcatDataset([union_test_data.dataset + test_loader.dataset])
+        #     union_test_data = DataLoader(union_test_dataset)
+
+        for i in range(len(self.fl_test_loaders)):
+            self.fl_test_loaders[i] = union_test_data
+        logger.info("Successfully union all testing data!")

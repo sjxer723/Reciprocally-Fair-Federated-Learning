@@ -1,0 +1,2 @@
+usage: main.py [-h] [--params PARAMS] [--name NAME] [--method METHOD]
+main.py: error: unrecognized arguments: --idtest

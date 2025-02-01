@@ -41,7 +41,7 @@ class FLInstance:
                 shapley_val = self.n
             else:
                 ## the derivate is n * alpha * beta / (sum of s_j, j appears before i)^{beta +1}
-                shapley_val = self.n * self.alpha * self.beta * 1.0 / pow(sum_of_s_before_i, self.beta + 1)
+                shapley_val = self.n * self.alpha * self.beta * 1.0 / pow(1 + sum_of_s_before_i, self.beta + 1)
             shapley_values.append(shapley_val)
         return sum(shapley_values)/num_perms
     
