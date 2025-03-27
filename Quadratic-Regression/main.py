@@ -283,8 +283,8 @@ if __name__ == "__main__":
     print("Accuracy of Fed-Shap: ", accs)
     print("Shares of Fed-Shap  :", s_vec)
     print("Costs  of Fed-Shap  :", cost_of_clients)
-    print("Welfare of Fed-Shap :", [acc - cost for acc, cost in zip(accs, cost_of_clients)])    
-
+    print("Welfare of Fed-Shap :", sum(accs) - sum(cost_of_clients))
+    
     ## Run the FL protocol with closed form
     w = fit_closed_form_accuracy(clients)     # find the fitted closed form accuracys
     for method in ["br", "br-bg"]:
@@ -293,4 +293,4 @@ if __name__ == "__main__":
         print("Accuracy of  {}: {}".format(method, accs))
         print("Shares of    {}: {}".format(method, s_vec))
         print("Costs  of    {}: {}".format(method, cost_of_clients))
-        print("Welfare of   {}: {}".format(method, [acc - cost for acc, cost in zip(accs, cost_of_clients)]))
+        print("Welfare of   {}: {}".format(method, sum(accs) - sum(cost_of_clients)))
