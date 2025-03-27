@@ -171,7 +171,6 @@ class MNIST_FedAvgTask:
 
     def all_users(self) -> List[FLUser]:
         all_ids = range(self.params.fl_total_participants)
-        print("fl_total_participants: ", self.params.fl_total_participants)
         all_users = []
         for pos, user_id in enumerate(all_ids):
             train_loader = self.fl_train_loaders[user_id]

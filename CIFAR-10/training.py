@@ -79,7 +79,7 @@ def test(hlpr: Helper, epoch, backdoor=False):
 
     with torch.no_grad():
         print("Length of Loader", len(hlpr.task.test_loader))
-        for i, data in tqdm(enumerate(hlpr.task.test_loader)):
+        for i, (data, _) in tqdm(enumerate(hlpr.task.test_loader)):
             batch = hlpr.task.get_batch(i, data)
             outputs = model(batch.inputs)
             hlpr.task.accumulate_metrics(outputs=outputs, labels=batch.labels)

@@ -5,13 +5,14 @@ import copy
 from threading import Thread
 import copy
 import random
-import itertools
+from itertools import product
 
 import yaml
 from prompt_toolkit import prompt
 from shapley_value import FLInstance
 from helper import Helper
 from utils.utils import *
+from scipy.optimize import curve_fit
 
 torch.autograd.set_detect_anomaly(True)
 
@@ -158,7 +159,7 @@ def fl_run(hlpr: Helper):
                             threads.append(thread)
                             thread.start()
                         for thread in threads:
-                            acc = thread.join()
+                            user_id, acc = thread.join()
                             accs.append(acc)
                         remaining_clients -= thread_pool_size
 
@@ -326,7 +327,7 @@ class ClientThread(Thread):
             self._return = self.user.user_id, self.s
         
         elif self.task == "Test":
-            self._return = self.test(self.model)
+            self._return = self.user.user_id, self.test(self.model)
         else:
             raise ValueError("Task not recognized!")
         
@@ -349,6 +350,84 @@ class ClientThread(Thread):
         return self._return
 
 
+def fl_run_normal(hlpr: Helper, s_vec):
+    hlpr.task.model = hlpr.task.build_model()
+    accs = {a.user_id: 0 for a in hlpr.task.all_users()}
+
+    for epoch in range(hlpr.params.epochs + 1):
+        global_model = hlpr.task.model
+        grads = []        
+        round_participants = hlpr.task.sample_users_for_round()
+        remaining_clients = len(round_participants)
+        
+        while remaining_clients > 0:
+            thread_pool_size = min(remaining_clients, hlpr.params.max_threads)
+            threads = []
+            for user in round_participants[len(round_participants) - remaining_clients: \
+                                    len(round_participants) - remaining_clients + thread_pool_size]:
+                thread = ClientThread(user, hlpr, copy.deepcopy(global_model), user.user_id, s_vec, "Train", round_participants)
+                threads.append(thread)
+                thread.start()
+            for thread in threads:
+                _, grad, _ = thread.join()
+                grads.append(grad)
+            
+            threads = []
+            for user in round_participants[len(round_participants) - remaining_clients: \
+                                    len(round_participants) - remaining_clients + thread_pool_size]:
+                thread = ClientThread(user, hlpr, copy.deepcopy(global_model), user.user_id, s_vec, "Test", round_participants)
+                threads.append(thread)
+                thread.start()
+            for thread in threads:
+                user_id, acc = thread.join()
+                accs[user_id] = acc
+
+            remaining_clients -= thread_pool_size
+        
+        new_state_dict = dict()
+        for name, _ in grads[0].items():
+            new_state_dict[name] = global_model.state_dict()[name]
+        for name in new_state_dict.keys():
+            for grad in grads:
+                new_state_dict[name].sub_(grad[name] * hlpr.params.lr)
+
+        global_model.load_state_dict(new_state_dict, strict=False)
+
+        # logger.info('Epoch: {}, Accs: {}'.format(epoch, accs))
+
+    return accs 
+
+def non_iid_main(params: Params):
+    # partition the datasets into four parts
+    fit_params = copy.deepcopy(params)
+    types_of_data = 3
+    fit_params['fl_total_participants'] = types_of_data
+    fit_params['fl_no_models'] = types_of_data
+    fit_params['epochs'] = 2
+    fit_helper = Helper(fit_params)    
+
+    min_size_train_loader = min(200, min([len(user.train_loader) for user in fit_helper.task.all_users()]))
+    s_step = 100
+    num_of_samples_per_dimension = min_size_train_loader // s_step
+    print(num_of_samples_per_dimension)
+    s_vecs = list(product(range(num_of_samples_per_dimension + 1), repeat=3))
+    
+    def accuracy_func(S, w1, w2, w3):
+        s1, s2, s3 = S
+        return 1 - 1 / (w1 * s1 + w2 * s2 + w3 * s3)
+
+    accs1, accs2, accs3 = [], [], []
+    for s_vec in s_vecs:
+        print(s_vec)
+        acc1, acc2, acc3 = fl_run_normal(fit_helper, s_vec)
+        accs1.append(acc1)
+        accs2.append(acc2)
+        accs3.append(acc3)
+    
+    popt, _ = curve_fit(accuracy_func, (x1, x2, x3), y, p0=[1, 1, 1])
+    pass
+
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--params', dest='params', default='fedavg.yaml')
@@ -366,15 +445,16 @@ if __name__ == '__main__':
     params['idtest'] = args.idtest
     helper = Helper(params)
     
+    non_iid_main(params)
     ## Make all the testing dataset the same
-    if args.idtest:
-        logger.info("All the testing data are made identical!")
-        helper.task.merge_test_data()
+    # if args.idtest:
+    #     logger.info("All the testing data are made identical!")
+    #     helper.task.merge_test_data()
     
-    try:
-        fl_run(helper)
-    except (KeyboardInterrupt):
-        logger.error(f"Fine. Deleted: {helper.params.folder_path}")
-        shutil.rmtree(helper.params.folder_path, ignore_errors=True)
-        if helper.params.tb:
-            shutil.rmtree(f'runs/{args.name}')
+    # try:
+    #     fl_run(helper)
+    # except (KeyboardInterrupt):
+    #     logger.error(f"Fine. Deleted: {helper.params.folder_path}")
+    #     shutil.rmtree(helper.params.folder_path, ignore_errors=True)
+    #     if helper.params.tb:
+    #         shutil.rmtree(f'runs/{args.name}')
