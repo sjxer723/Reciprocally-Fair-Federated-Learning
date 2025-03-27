@@ -16,3 +16,6 @@
 */saved_models/*
 */run/*
 .DS_Store
+MNIST/runs/*
+MNIST/out/*
+MNIST/saved_models/*
