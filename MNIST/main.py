@@ -1,14 +1,14 @@
 import argparse
-import shutil
 from datetime import datetime
 import copy
 from threading import Thread
 import copy
+import json
 import random
+from tqdm import tqdm
 from itertools import product
 
 import yaml
-from prompt_toolkit import prompt
 from shapley_value import FLInstance
 from helper import Helper
 from utils.utils import *
@@ -21,10 +21,11 @@ logger = logging.getLogger('logger')
 ## MNIST
 max_resource = 100
 d_s = 5
-cost = [random.uniform(0.004, 0.005) for _ in range(100)]
+costs = []
 delta = 10
 alpha = 0.384
 beta = 0.4
+s_lr = 100
 s_delta = 10
 cost_scalar_beta = 0.8
 
@@ -71,199 +72,21 @@ def test(hlpr: Helper, model, test_loader):
         test_acc, test_loss = hlpr.task.get_metrics(metrics)
 
     return test_acc, test_loss
-
-
-def fl_run(hlpr: Helper):
-    hlpr.task.model = hlpr.task.build_model()
-    global_model = hlpr.task.model
-    s_dict = {}
-    for participant in range(hlpr.params.fl_total_participants):
-        s_dict[participant] = 1.0
-    logger.info(s_dict)
-    
-    # print(len(round_participants[0].test_loader))
-    for epoch in range(hlpr.params.epochs + 1):
-        round_participants = hlpr.task.sample_users_for_round()
-    
-        grads, grads1 = [], []
-        grads_dict, grads1_dict = {}, {}
-        accs = []
-        
-        logger.info(f"Epoch: {epoch}, sample {[agent.user_id for agent in round_participants]}")
-        remaining_clients = len(round_participants)
-        
-        if hlpr.task.params.method != "br-shap":
-            remaining_clients = len(round_participants)
-            while remaining_clients > 0:
-                thread_pool_size = min(remaining_clients, hlpr.params.max_threads)
-                threads = []
-                for user in round_participants[len(round_participants) - remaining_clients: \
-                                        len(round_participants) - remaining_clients + thread_pool_size]:
-                    thread = ClientThread(user, hlpr, copy.deepcopy(global_model), user.user_id, s_dict, "Update", round_participants)
-                    threads.append(thread)
-                    thread.start()
-                for thread in threads:
-                    user_id, grad, acc, s = thread.join()
-                    grads.append(grad)
-                    accs.append(acc)
-                    s_dict[user_id] = s
-                remaining_clients -= thread_pool_size
-        else:
-            while remaining_clients > 0:
-                thread_pool_size = min(remaining_clients, hlpr.params.max_threads)
-                threads = []
-                for user in round_participants[len(round_participants) - remaining_clients: \
-                                        len(round_participants) - remaining_clients + thread_pool_size]:
-                    thread = ClientThread(user, hlpr, copy.deepcopy(global_model), user.user_id, s_dict, "Train", round_participants)
-                    threads.append(thread)
-                    thread.start()
-                for thread in threads:
-                    user_id, grad, grad1 = thread.join()
-                    grads.append(grad)
-                    grads_dict[user_id] = grad
-                    grads1.append(grad1)
-                    grads1_dict[user_id] = grad1
-                remaining_clients -= thread_pool_size
-            
-            ## Update all the shares
-            num_perms = 1
-            sampled_agents = [agent.user_id for agent in round_participants]
-            model_for_measure_share1 = copy.deepcopy(global_model)
-            model_for_measure_share2 = copy.deepcopy(global_model)
-            avg_shapley_share = {agent.user_id: 0 for agent in round_participants}
-            for _ in range(num_perms):
-                perm = sampled_agents
-                random.shuffle(perm)
-                shapley_share = {agent.user_id: 0 for agent in round_participants}
-
-                for j in range(1, len(perm)+1):
-                    agent_i = perm[j-1]
-                    agents_with_i = perm[:j]
-                    
-                    ## Measure the sum of accuracies when using the first j datasets
-                    new_state_dict = dict()
-                    for name, _ in grads_dict[agent_i].items():
-                        new_state_dict[name] = model_for_measure_share1.state_dict()[name]
-                    for name in new_state_dict.keys():
-                        for agent in agents_with_i:
-                            new_state_dict[name].sub_(grads_dict[agent][name] * hlpr.params.lr)
-                    model_for_measure_share1.load_state_dict(new_state_dict, strict=False)
-                    remaining_clients = 1 if hlpr.params.idtest else len(round_participants)
-                    accs = []
-                    while remaining_clients > 0:
-                        thread_pool_size = min(remaining_clients, hlpr.params.max_threads)
-                        threads = []
-                        for user in round_participants[len(round_participants) - remaining_clients: \
-                                                len(round_participants) - remaining_clients + thread_pool_size]:
-                            thread = ClientThread(user, hlpr, copy.deepcopy(model_for_measure_share1), user.user_id, s_dict, "Test", round_participants)
-                            threads.append(thread)
-                            thread.start()
-                        for thread in threads:
-                            user_id, acc = thread.join()
-                            accs.append(acc)
-                        remaining_clients -= thread_pool_size
-
-                    ## Measure the sum of accuracies when using the first j datasets 
-                    #  with s_j improved by one
-                    new_state_dict = dict()
-                    for name, _ in grads_dict[agent_i].items():
-                        new_state_dict[name] = model_for_measure_share2.state_dict()[name]
-                    for name in new_state_dict.keys():
-                        for agent in agents_with_i[:-1]:
-                            new_state_dict[name].sub_(grads_dict[agent][name] * hlpr.params.lr)
-                        new_state_dict[name].sub_(grads1_dict[agent_i][name] * hlpr.params.lr)
-                    model_for_measure_share2.load_state_dict(new_state_dict, strict=False)
-                    
-                    remaining_clients = 1 if hlpr.params.idtest else len(round_participants)
-                    acc1s = []
-                    while remaining_clients > 0:
-                        thread_pool_size = min(remaining_clients, hlpr.params.max_threads)
-                        threads = []
-                        for user in round_participants[len(round_participants) - remaining_clients: \
-                                                len(round_participants) - remaining_clients + thread_pool_size]:
-                            thread = ClientThread(user, hlpr, copy.deepcopy(model_for_measure_share2), user.user_id, s_dict, "Test", round_participants)
-                            threads.append(thread)
-                            thread.start()
-                        for thread in threads:
-                            acc = thread.join()
-                            acc1s.append(acc)
-                        remaining_clients -= thread_pool_size
-
-                    shapley_share[agent_i] = sum(acc1s) - sum(accs)
-
-                for i in range(len(perm)):
-                    agent_i = perm[i]
-                    avg_shapley_share[agent_i] += shapley_share[agent_i]
-            
-            for agent_i in round_participants:
-                avg_shapley_share[agent_i.user_id] = avg_shapley_share[agent_i.user_id] / num_perms
-                if helper.params.idtest:
-                    avg_shapley_share[agent_i.user_id] *= helper.params.fl_no_models
-            
-            logger.info(f"Epoch: {epoch}, shapley share: {avg_shapley_share}")
-
-            for agent in round_participants:
-                _s = s_dict[agent.user_id] + delta * (avg_shapley_share[agent.user_id] / s_delta - cost[agent.user_id])
-                if _s < 0 or _s >= max_resource:
-                    continue
-                else:
-                    s_dict[agent.user_id] = _s
-        
-        if epoch % 10 == 0:
-            accs = []
-            costs = [cost[i] * s_dict[i] for i in range(hlpr.params.fl_total_participants)]
-            all_users = hlpr.task.all_users()
-            remaining_clients = len(all_users)
-            while remaining_clients > 0:
-                thread_pool_size = min(remaining_clients, hlpr.params.max_threads)
-                threads = []
-                for user in all_users[len(all_users) - remaining_clients: \
-                                        len(all_users) - remaining_clients + thread_pool_size]:
-                    thread = ClientThread(user, hlpr, copy.deepcopy(global_model), user.user_id, s_dict, "Test", round_participants)
-                    threads.append(thread)
-                    thread.start()
-                for thread in threads:
-                    acc = thread.join()
-                    accs.append(acc)
-                remaining_clients -= thread_pool_size
-
-            logger.info(s_dict)
-            logger.info(', '.join(map(str, accs)))
-            logger.warning('Epoch: {} Sum of s_i: {}'.format(epoch, sum(s_dict.values())))
-            logger.warning('Epoch: {}, Acc: {:.3f}, Sum of s_i: {}, Costs: {}'.format(epoch, sum(accs), sum(s_dict.values()), sum(costs)))
-        
-        ## Update the global model
-        new_state_dict = dict()
-        for name, _ in grads[0].items():
-            new_state_dict[name] = global_model.state_dict()[name]
-        for name in new_state_dict.keys():
-            for grad in grads:
-                new_state_dict[name].sub_(grad[name] * hlpr.params.lr)
-        global_model.load_state_dict(new_state_dict, strict=False)
         
 class ClientThread(Thread):
-    def __init__(self, user, hlpr, global_model, _id, s_all, task, sampled_agents, _lr = 0.01):
+    def __init__(self, user, hlpr, global_model, s_vec, task, sampled_agents, _lr = 0.01):
         super().__init__()
         self.user = user
         self.hlpr = hlpr
         self.model = global_model
-        self.id = _id
-        self.s_all = s_all
-        self.s = s_all[_id]
+        self.id = user.user_id
+        self.s_vec = s_vec
+        self.s = s_vec[user.user_id]
         self.sampled_agents = [agent.user_id for agent in sampled_agents]
         self.eps = 0.001
         self.task = task
         self.learning_rate = _lr
         self._return = None
-
-    def cost(self, s):
-        return self.cost_per_s * s
-    
-    def avg_cost_of_others(self):
-        return self.cost_per_s * (sum(self.s_all.values()) - self.s) * 1.0 / (len(self.s_all) - 1) 
-    
-    def cost_gradient(self):
-        return cost[self.id]
     
     def run(self):
         if self.task == "Train":
@@ -305,8 +128,8 @@ class ClientThread(Thread):
             self._return = self.user.user_id, grad, grad_eps
 
         elif self.task == "Update":
-            s_all = self.s_all
-            fl = FLInstance(len(self.s_all), self.s_all, alpha, beta, 0.01)
+            s_all = self.s_vec
+            fl = FLInstance(len(self.s_vec), self.s_vec, alpha, beta, 0.01)
             if self.hlpr.params.method == "br-shap":
                 # FedBR-SV, ∂d/∂s = ∂φ/∂s - c
                 # d = fl.compute_shapley_value_derivative(self.id) - self.cost_gradient()
@@ -324,10 +147,10 @@ class ClientThread(Thread):
             s_ = self.s + delta * d
             if not (s_ > max_resource or s_ < 0):
                 self.s = s_
-            self._return = self.user.user_id, self.s
+            self._return = self.id, self.s
         
         elif self.task == "Test":
-            self._return = self.user.user_id, self.test(self.model)
+            self._return = self.id, self.test(self.model)
         else:
             raise ValueError("Task not recognized!")
         
@@ -349,8 +172,7 @@ class ClientThread(Thread):
         Thread.join(self, *args)
         return self._return
 
-
-def fl_run_normal(hlpr: Helper, s_vec):
+def fl_run_with_fixed_share(hlpr: Helper, s_vec, verbose=False):
     hlpr.task.model = hlpr.task.build_model()
     accs = {a.user_id: 0 for a in hlpr.task.all_users()}
 
@@ -365,7 +187,7 @@ def fl_run_normal(hlpr: Helper, s_vec):
             threads = []
             for user in round_participants[len(round_participants) - remaining_clients: \
                                     len(round_participants) - remaining_clients + thread_pool_size]:
-                thread = ClientThread(user, hlpr, copy.deepcopy(global_model), user.user_id, s_vec, "Train", round_participants)
+                thread = ClientThread(user, hlpr, copy.deepcopy(global_model), s_vec, "Train", round_participants)
                 threads.append(thread)
                 thread.start()
             for thread in threads:
@@ -375,7 +197,7 @@ def fl_run_normal(hlpr: Helper, s_vec):
             threads = []
             for user in round_participants[len(round_participants) - remaining_clients: \
                                     len(round_participants) - remaining_clients + thread_pool_size]:
-                thread = ClientThread(user, hlpr, copy.deepcopy(global_model), user.user_id, s_vec, "Test", round_participants)
+                thread = ClientThread(user, hlpr, copy.deepcopy(global_model), s_vec, "Test", round_participants)
                 threads.append(thread)
                 thread.start()
             for thread in threads:
@@ -393,41 +215,145 @@ def fl_run_normal(hlpr: Helper, s_vec):
 
         global_model.load_state_dict(new_state_dict, strict=False)
 
-        # logger.info('Epoch: {}, Accs: {}'.format(epoch, accs))
-
+        if verbose and epoch % 10 == 0:
+            accs_str = ', '.join(['{:.2f}'.format(acc) for acc in accs])
+            logger.info('Epoch: {}, Accs: [{}]'.format(epoch, accs_str))
     return accs 
 
-def non_iid_main(params: Params):
-    # partition the datasets into four parts
+def best_response(hlpr: Helper, W, costs, verbose=False):
+    hlpr.task.model = hlpr.task.build_model()
+    all_users = hlpr.task.all_users()
+    num_of_users = len(all_users)
+    num_of_groups = len(W)
+    s_vec = [1.0 for _ in range(num_of_users)]  # initial data share vector
+    
+    def derivative_of_accuracy(S, *W, j, grouping_fun=None):
+        # W is a (num_of_groups * num_of_groups) matrix
+        if grouping_fun is None:
+            grouping_fun = lambda _: 0
+        group_of_j = grouping_fun(j)
+        w = W[group_of_j]
+        len_of_S = len(S)
+        return w[group_of_j] / (1 + sum([w[grouping_fun(i)] * S[i] for i in range(len_of_S)]))**2
+    
+    def partial_derivative_of_accuracy(S, *W, agents_with_i, i, grouping_fun=None):
+        # Calculate the partial derivative of accuracy with respect to s_i
+        if grouping_fun is None:
+            grouping_fun = lambda _: 0
+        len_of_S = len(S)
+        derivative = 0
+        for i in range(len_of_S):
+            w = W[grouping_fun(i)]
+            denominator = 1 + sum([w[grouping_fun(j)] * S[j] for j in agents_with_i])
+            derivative += w[grouping_fun(i)] / (denominator ** 2)
+        
+        return derivative
+    
+    def update_share(S, W, i):
+        derivative = derivative_of_accuracy(S, *W, j=i, grouping_fun=lambda x: int((x / num_of_users) * num_of_groups))
+        s_updated = S[i]
+        if hlpr.params.method == "br":
+            s_updated = S[i] + s_lr * (derivative - costs[i])
+        elif hlpr.params.method == "br-bg": 
+            s_updated = S[i] + s_lr * (derivative - (1 - cost_scalar_beta) * costs[i])
+        elif hlpr.params.method == "br-shap":
+            # For FedBR-SV, we need to estimate of the Shapley value
+            fl = FLInstance(num_of_users, S, alpha, beta, _eps=1)
+            derivative_f = lambda agents_with_i, i: \
+                partial_derivative_of_accuracy(S, *W, agents_with_i=agents_with_i, i=i, \
+                        grouping_fun=lambda x: int((x / num_of_users) * num_of_groups))
+            shapley_derivative = fl.compute_derivative_of_shapley_value(i, derivative_f) - costs[i]
+            s_updated = S[i] + s_lr * shapley_derivative
+        else :
+            raise ValueError("unknown method {} for best response".format(hlpr.params.method))
+        # print(s_updated)
+        if s_updated >= max_resource or s_updated <= 0:
+            return S[i]
+        else:
+            return s_updated
+
+    for epoch in range(hlpr.params.num_of_br + 1):
+        round_participants = hlpr.task.sample_users_for_round()
+        ## Update share for every participant
+        for user in round_participants:
+            s_vec[user.user_id] = update_share(s_vec, W, user.user_id)
+        ## Report the accuracy for all testing datasets
+        if epoch % 10 == 0 and verbose:
+            logger.info(s_vec)
+            incurred_costs = [c * s for c, s in zip(costs, s_vec)]
+            logger.warning('Epoch: {}, Sum of s_i: {}, Costs: {}'.format(epoch, sum(s_vec), sum(incurred_costs)))
+
+    return s_vec
+
+def non_iid_main(params: Params, rotation_angles=None, verbose=False):
+    # partition the datasets into three parts
     fit_params = copy.deepcopy(params)
     types_of_data = 3
     fit_params['fl_total_participants'] = types_of_data
     fit_params['fl_no_models'] = types_of_data
-    fit_params['epochs'] = 2
+    fit_params['epochs'] = 100
+    fit_params['rotation_angles'] = rotation_angles  # for rotation
     fit_helper = Helper(fit_params)    
 
     min_size_train_loader = min(200, min([len(user.train_loader) for user in fit_helper.task.all_users()]))
-    s_step = 100
+    s_step = 200
     num_of_samples_per_dimension = min_size_train_loader // s_step
-    print(num_of_samples_per_dimension)
-    s_vecs = list(product(range(num_of_samples_per_dimension + 1), repeat=3))
+    s_vecs = list(product([s_step * i for i in range(num_of_samples_per_dimension + 1)], repeat=3))
     
-    def accuracy_func(S, w1, w2, w3):
-        s1, s2, s3 = S
-        return 1 - 1 / (w1 * s1 + w2 * s2 + w3 * s3)
+    # a_i = 1 -  1 / (1 + w{i,1} * s1 + w{i, 2} * s2 + w{i, 3} * s3)
+    def accuracy_func(S, *w):
+        len_of_S = len(S)
+        return 1 - 1 / (1 + sum([w[i] * S[i] for i in range(len_of_S)]))
 
-    accs1, accs2, accs3 = [], [], []
-    for s_vec in s_vecs:
-        print(s_vec)
-        acc1, acc2, acc3 = fl_run_normal(fit_helper, s_vec)
-        accs1.append(acc1)
-        accs2.append(acc2)
-        accs3.append(acc3)
+    # Fit the accuracy function
+    logger.info("Fitting the accuracy function...")
+    all_accs = np.zeros((len(s_vecs), types_of_data)) 
+    for s_idx, s_vec in tqdm(enumerate(s_vecs), total=len(s_vecs)):
+        accs = fl_run_with_fixed_share(fit_helper, s_vec)
+        all_accs[s_idx] = [accs[i] for i in range(types_of_data)]
+
+    W = np.zeros((types_of_data, types_of_data))
+    fl_results = {}
+    if os.path.exists("out/{}_non_iid_fl_weights.json".format(params["task"])):
+        past_results = json.load(open("out/{}_non_iid_fl_results.json".format(params["task"]), "r"))
+        W = np.array(past_results["W"])
+        logger.info("Loaded previous fitted weights: {}".format(W))
+    else:
+        for i in range(types_of_data):
+            try:
+                popt, _ = curve_fit(accuracy_func, 
+                                    [[s_vecs[j][i] for j in range(len(s_vecs))] for i in range(types_of_data)],
+                                    all_accs[:, i], np.zeros(types_of_data))
+                W[i] = popt
+            except:
+                print("Fail to fit curve")
+        fl_results["W"] = W.tolist()
+        with open("out/{}_non_iid_fl_weights.json".format(params["task"]), "w") as f:
+            json.dump(fl_results, f, indent=4)
     
-    popt, _ = curve_fit(accuracy_func, (x1, x2, x3), y, p0=[1, 1, 1])
-    pass
+    logger.info("Fitted weights: {}".format(W))
 
+    main_hlpr = Helper(params)
+    costs = [random.uniform(0, 0.001) for _ in range(len(main_hlpr.task.all_users()))]  # random costs for each user
+    fl_results["costs"] = costs
+    fl_results["W"] = W.tolist()
+    for m in ["br", "br-bg", "br-shap"]:
+        main_hlpr.params.method = m
+        logger.info("Running method: {}".format(m))
+        logger.warning("Begin best response calculation for {}!".format(m))
+        s_vec = best_response(main_hlpr, W, costs)
+        logger.warning("Finish best response calculation for {}!".format(m))
+        logger.warning("BE: [{}]".format(', '.join(['{:.2f}'.format(float(v)) for v in s_vec])))
 
+        accs = fl_run_with_fixed_share(main_hlpr, s_vec, verbose=True)
+        fl_results[m] = {
+            "BE": s_vec, "Acc": accs, 
+            "Costs": [costs[i] * s_vec[i] for i in range(len(s_vec))],
+            "Sum of s": sum(s_vec)
+        }
+    with open("out/{}_non_iid_fl_results.json".format(params["task"]), "w") as f:
+        json.dump(fl_results, f, indent=4)
+ 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--params', dest='params', default='fedavg.yaml')
@@ -443,9 +369,8 @@ if __name__ == '__main__':
     params['name'] = args.name
     params['method'] = args.method
     params['idtest'] = args.idtest
-    helper = Helper(params)
-    
-    non_iid_main(params)
+
+    non_iid_main(params, rotation_angles=[10, 90, 180])
     ## Make all the testing dataset the same
     # if args.idtest:
     #     logger.info("All the testing data are made identical!")

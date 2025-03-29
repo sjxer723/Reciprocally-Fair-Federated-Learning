@@ -138,6 +138,11 @@ class Params:
     # Method
     method: str = ""
 
+    # Rotation angles:
+    rotation_angles: List[int] = None
+    # Number of best response iterations
+    num_of_br: int = 300
+    
     # FLTrust
     fltrust: bool = None
 

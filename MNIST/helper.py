@@ -91,8 +91,8 @@ class Helper:
             formatter = logging.Formatter('%(asctime)s - %(name)s '
                                           '- %(levelname)s - %(message)s')
             fh.setFormatter(formatter)
-            log.addHandler(fh)
-
+            if not log.handlers:
+                log.addHandler(fh)
             log.warning(f'Logging to: {self.params.folder_path}')
 
             with open(f'{self.params.folder_path}/params.yaml.txt', 'w') as f:

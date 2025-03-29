@@ -141,7 +141,7 @@ class MNIST_FedAvgTask:
         self.load_data()
         self.model = self.build_model()
         self.criterion = self.make_criterion()
-        self.adversaries = self.sample_adversaries()
+        # self.adversaries = self.sample_adversaries()
 
         self.metrics = [AccuracyMetric(), TestLossMetric(self.criterion)]
         self.set_input_shape()

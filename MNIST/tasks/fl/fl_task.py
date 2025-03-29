@@ -28,7 +28,7 @@ class FederatedLearningTask(Task):
 
         self.local_model = self.build_model().to(self.params.device)
         self.criterion = self.make_criterion()
-        self.adversaries = self.sample_adversaries()
+        # self.adversaries = self.sample_adversaries()
 
         self.metrics = [AccuracyMetric(), TestLossMetric(self.criterion)]
         self.set_input_shape()

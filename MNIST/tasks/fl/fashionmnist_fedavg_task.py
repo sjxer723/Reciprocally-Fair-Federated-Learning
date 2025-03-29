@@ -307,12 +307,12 @@ class FashionMNIST_FedAvgTask:
     def load_data(self) -> None:
         self.classes = (0, 1, 2, 3, 4, 5, 6, 7, 8, 9)
         self.train_dataset = torchvision.datasets.FashionMNIST(root=self.params.data_path, train=True, download=True, transform=transforms.ToTensor())
-        train_loaders, test_loaders = self.assign_data(bias=self.params.fl_q)
+        train_loaders, test_loaders = self.assign_data(bias=self.params.fl_q, rotation_angles=self.params.rotation_angles)
         self.fl_train_loaders = train_loaders
         self.fl_test_loaders = test_loaders
         return
 
-    def assign_data(self, bias=1, p=0.1):
+    def assign_data(self, bias=1, rotation_angles=None, p=0.1):
         num_labels = len(self.classes)
         num_workers = self.params.fl_total_participants
         server_pc = 0
@@ -374,7 +374,14 @@ class FashionMNIST_FedAvgTask:
         each_worker_label = [each_worker_label[i] for i in random_order]
 
         train_loaders, test_loaders = [], []
-        transform_list = [transforms.RandomRotation((0, 0)) for _ in range(num_workers)]
+        transform_list = []
+        if rotation_angles is None:
+            logger.info("No rotation angles provided.")
+            transform_list = [transforms.RandomRotation((0, 0)) for _ in range(num_workers)]
+        else:
+            logger.info(f"Using rotation angles: {rotation_angles}")
+            transform_list = [transforms.RandomRotation((rotation_angles[i], rotation_angles[i])) for i in range(num_workers)]
+            
         for i in range(len(each_worker_data)):
             train_set = ClientDataset(each_worker_data[i], each_worker_label[i], transform_list[i])
             if self.params.fl_client_data is not None:
