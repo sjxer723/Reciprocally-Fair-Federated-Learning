@@ -291,7 +291,7 @@ def non_iid_main(params: Params, rotation_angles=None, verbose=False):
     types_of_data = 3
     fit_params['fl_total_participants'] = types_of_data
     fit_params['fl_no_models'] = types_of_data
-    fit_params['epochs'] = 100
+    fit_params['epochs'] = 2
     fit_params['rotation_angles'] = rotation_angles  # for rotation
     fit_helper = Helper(fit_params)    
 
@@ -306,19 +306,18 @@ def non_iid_main(params: Params, rotation_angles=None, verbose=False):
         return 1 - 1 / (1 + sum([w[i] * S[i] for i in range(len_of_S)]))
 
     # Fit the accuracy function
-    logger.info("Fitting the accuracy function...")
-    all_accs = np.zeros((len(s_vecs), types_of_data)) 
-    for s_idx, s_vec in tqdm(enumerate(s_vecs), total=len(s_vecs)):
-        accs = fl_run_with_fixed_share(fit_helper, s_vec)
-        all_accs[s_idx] = [accs[i] for i in range(types_of_data)]
-
     W = np.zeros((types_of_data, types_of_data))
     fl_results = {}
     if os.path.exists("out/{}_non_iid_fl_weights.json".format(params["task"])):
-        past_results = json.load(open("out/{}_non_iid_fl_results.json".format(params["task"]), "r"))
+        past_results = json.load(open("out/{}_non_iid_fl_weights.json".format(params["task"]), "r"))
         W = np.array(past_results["W"])
         logger.info("Loaded previous fitted weights: {}".format(W))
     else:
+        logger.info("Fitting the accuracy function...")
+        all_accs = np.zeros((len(s_vecs), types_of_data)) 
+        for s_idx, s_vec in tqdm(enumerate(s_vecs), total=len(s_vecs)):
+            accs = fl_run_with_fixed_share(fit_helper, s_vec)
+            all_accs[s_idx] = [accs[i] for i in range(types_of_data)]
         for i in range(types_of_data):
             try:
                 popt, _ = curve_fit(accuracy_func, 
@@ -333,7 +332,11 @@ def non_iid_main(params: Params, rotation_angles=None, verbose=False):
     
     logger.info("Fitted weights: {}".format(W))
 
-    main_hlpr = Helper(params)
+    # set the rotation angles for each participant
+    if rotation_angles is not None:
+        type_of_agent = lambda x: int((x / params['fl_total_participants']) * types_of_data)
+        params['rotation_angles'] = [rotation_angles[type_of_agent(i)] for i in range(params['fl_total_participants'])]
+    main_hlpr = Helper(params)    
     costs = [random.uniform(0, 0.001) for _ in range(len(main_hlpr.task.all_users()))]  # random costs for each user
     fl_results["costs"] = costs
     fl_results["W"] = W.tolist()
