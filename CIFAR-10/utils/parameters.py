@@ -124,7 +124,8 @@ class Params:
     fl_gamma: int = -1
     fl_server_model_path: str = None
     fl_client_train_ratio: float = None
-    
+    realacc: bool = False
+    rotation_angles: List[int] = None
 
     def __post_init__(self):
         # enable logging anyways when saving statistics

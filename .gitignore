@@ -19,3 +19,5 @@
 MNIST/runs/*
 MNIST/out/*
 MNIST/saved_models/*
+CIFAR-10/runs/*
+CIFAR-10/out/*

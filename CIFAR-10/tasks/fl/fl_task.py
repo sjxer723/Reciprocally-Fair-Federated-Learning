@@ -34,6 +34,19 @@ class FederatedLearningTask(Task):
         self.set_input_shape()
         return
 
+    def all_users(self) -> List[FLUser]:
+        all_ids = range(self.params.fl_total_participants)
+        all_users = []
+        for pos, user_id in enumerate(all_ids):
+            train_loader = self.fl_train_loaders[user_id]
+            test_loader = self.fl_test_loaders[user_id]
+            # compromised = self.check_user_compromised(user_id)
+            user = FLUser(user_id, compromised=False,
+                          train_loader=train_loader, test_loader=test_loader)
+            all_users.append(user)
+
+        return all_users
+    
     def get_empty_accumulator(self):
         weight_accumulator = dict()
         for name, data in self.model.state_dict().items():

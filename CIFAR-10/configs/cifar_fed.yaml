@@ -4,10 +4,10 @@ synthesizer: Pattern
 
 batch_size: 64
 test_batch_size: 100
-lr: 0.1
+lr: 0.001
 momentum: 0.9
 decay: 0.0005
-epochs: 350
+epochs: 20
 save_on_epochs: []
 optimizer: SGD
 log_interval: 100
@@ -32,7 +32,7 @@ transform_train: True
 fl: True
 fl_no_models: 10
 fl_local_epochs: 2
-fl_total_participants: 100
+fl_total_participants: 30
 fl_eta: 10
 fl_sample_dirichlet: False
 fl_dirichlet_alpha: None
