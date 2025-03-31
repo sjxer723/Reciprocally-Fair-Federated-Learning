@@ -53,7 +53,7 @@ class FederatedLearningTask(Task):
             weight_accumulator[name] = torch.zeros_like(data)
         return weight_accumulator
 
-    def sample_users_for_round(self, epoch) -> List[FLUser]:
+    def sample_users_for_round(self) -> List[FLUser]:
         sampled_ids = random.sample(
             range(self.params.fl_total_participants),
             self.params.fl_no_models)
@@ -61,10 +61,8 @@ class FederatedLearningTask(Task):
         for pos, user_id in enumerate(sampled_ids):
             train_loader = self.fl_train_loaders[user_id]
             test_loader = self.fl_test_loaders[user_id]
-            compromised = self.check_user_compromised(epoch, pos, user_id)
-            user = FLUser(user_id, compromised=compromised,
-                          train_loader=train_loader,
-                          test_loader=test_loader)
+            # compromised = self.check_user_compromised(epoch, pos, user_id)
+            user = FLUser(user_id, train_loader=train_loader, test_loader=test_loader)
             sampled_users.append(user)
 
         return sampled_users
@@ -125,7 +123,8 @@ class FederatedLearningTask(Task):
         for name, data in local_model.state_dict().items():
             if self.check_ignored_weights(name):
                 continue
-            local_update[name] = (data - global_model.state_dict()[name])
+            local_update[name] = (data - global_model.state_dict()[name].to(self.params.device))
+            # local_update[name] = (data - global_model.state_dict()[name])
 
         return local_update
 
@@ -133,7 +132,7 @@ class FederatedLearningTask(Task):
         update_norm = self.get_update_norm(local_update)
         for name, value in local_update.items():
             self.dp_clip(value, update_norm)
-            weight_accumulator[name].add_(value)
+            weight_accumulator[name].add_(value) # accumulate the updates
 
     def update_global_model(self, weight_accumulator, global_model: Module):
         for name, sum_update in weight_accumulator.items():
@@ -141,9 +140,14 @@ class FederatedLearningTask(Task):
                 continue
             scale = self.params.fl_eta / self.params.fl_total_participants
             average_update = scale * sum_update
-            self.dp_add_noise(average_update)
-            model_weight = global_model.state_dict()[name]
+            self.dp_add_noise(average_update.to(self.params.device))  # add noise if DP is enabled
+            model_weight = global_model.state_dict()[name].to(self.params.device)  # get the current weight of the global model
+
             model_weight.add_(average_update)
+            global_model.state_dict()[name].copy_(model_weight)
+            
+            # model_weight = global_model.state_dict()[name]
+            # model_weight.add_(average_update.to(self.params.device))  # update the global model
 
     def dp_clip(self, local_update_tensor: torch.Tensor, update_norm):
         if self.params.fl_diff_privacy and \

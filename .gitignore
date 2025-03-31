@@ -21,3 +21,5 @@ MNIST/out/*
 MNIST/saved_models/*
 CIFAR-10/runs/*
 CIFAR-10/out/*
+MNIST/python_job*
+CIFAR-10/python_job*

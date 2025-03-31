@@ -15,11 +15,11 @@ from helper import Helper
 from utils.utils import *
 
 logger = logging.getLogger('logger')
-alpha_1 = 1.331
-beta_1 = 0.262
+max_resource = 100
 cost = [random.uniform(0.0004, 0.0005) for _ in range(100)]
 cost_scalar_beta = 0.8
 delta = 30
+s_lr = 10
 
 ####### Accuracy Functions
 def a(s_all: list):
@@ -151,8 +151,8 @@ def fl_run(hlpr: Helper):
                        hlpr.params.epochs + 1):
         if hlpr.params.realacc:
             s_dict = run_fl_round_with_realacc(hlpr, epoch, s_dict)
-        else:
-            accs = run_fl_round_with_closed_form(hlpr, epoch, s_dict)
+        # else:
+        #     accs = run_fl_round_with_closed_form(hlpr, epoch, s_dict)
         metric = test(hlpr, epoch, backdoor=False)
         # test(hlpr, epoch, backdoor=True)
 
@@ -172,42 +172,13 @@ def fl_run(hlpr: Helper):
             logger.warning("The sum of accs: {}".format(sum(accs)))
             logger.warning("The welfare is {}".format(sum(utils)))        
 
-def run_fl_round_with_closed_form(hlpr, epoch, s_dict):
-    global_model = hlpr.task.model
-    local_model = hlpr.task.local_model
-
-    round_participants = hlpr.task.sample_users_for_round(epoch)
-    weight_accumulator = hlpr.task.get_empty_accumulator()
-    accs = {}
-    for user in round_participants:
-        s = s_dict[user.user_id]
-        hlpr.task.copy_params(global_model, local_model)
-        optimizer = hlpr.task.make_optimizer(local_model)
-        accuracy = test_local(hlpr, local_model, user.test_loader)
-        accs[user.user_id] = accuracy
-        for local_epoch in range(hlpr.params.fl_local_epochs):
-            if user.compromised:
-                train(hlpr, local_epoch, local_model, optimizer,
-                      user.train_loader, s, attack=True)
-            else:
-                train(hlpr, local_epoch, local_model, optimizer,
-                      user.train_loader, s, attack=False)
-        local_update = hlpr.task.get_fl_update(local_model, global_model)
-        if user.compromised:
-            hlpr.attack.fl_scale_update(local_update)
-        hlpr.task.accumulate_weights(weight_accumulator, local_update)
-    hlpr.task.update_global_model(weight_accumulator, global_model)
-    
-    return accs
-
-
 def run_fl_round_with_realacc(hlpr, epoch, s_dict):
     global alpha, beta
 
     global_model = hlpr.task.model
     local_model = hlpr.task.local_model
     s_delta = 3
-    round_participants = hlpr.task.sample_users_for_round(epoch)
+    round_participants = hlpr.task.sample_users_for_round()
     local_updates, local_updates1 = dict(), dict()
     
     for user in round_participants:
@@ -297,12 +268,17 @@ def run_fl_round_with_realacc(hlpr, epoch, s_dict):
 
 
 def fl_run_with_fixed_share(hlpr, s_vec):
+    global max_resource
+
     for epoch in range(hlpr.params.start_epoch, hlpr.params.epochs + 1):
         global_model = hlpr.task.model
         local_model = hlpr.task.local_model
 
-        round_participants = hlpr.task.sample_users_for_round(epoch)
+        round_participants = hlpr.task.sample_users_for_round()
         weight_accumulator = hlpr.task.get_empty_accumulator()
+        for key in weight_accumulator:
+            weight_accumulator[key] = weight_accumulator[key].to(hlpr.params.device)  # ensure the accumulator is on the same device as model
+
         accs = {}
         for user in round_participants:
             s = s_vec[user.user_id]
@@ -325,17 +301,85 @@ def fl_run_with_fixed_share(hlpr, s_vec):
             hlpr.task.accumulate_weights(weight_accumulator, local_update)
         
         hlpr.task.update_global_model(weight_accumulator, global_model)
+        hlpr.task.model =  global_model.to(hlpr.params.device)
         
         _ = test(hlpr, epoch, backdoor=False)
     
     accs = []
     for user in hlpr.task.all_users():
+        max_resource = min(len(user.train_loader), max_resource)
         acc = test_local(hlpr, hlpr.task.model, user.test_loader)
         accs.append(acc)
     
     return accs
 
-# def non_iid_main():
+def best_response(hlpr: Helper, W, costs, verbose=False):
+    global max_resource
+
+    hlpr.task.model = hlpr.task.build_model()
+    all_users = hlpr.task.all_users()
+    num_of_users = len(all_users)
+    num_of_groups = len(W)
+    s_vec = [1.0 for _ in range(num_of_users)]  # initial data share vector
+    
+    def derivative_of_accuracy(S, *W, j, grouping_fun=None):
+        # W is a (num_of_groups * num_of_groups) matrix
+        if grouping_fun is None:
+            grouping_fun = lambda _: 0
+        group_of_j = grouping_fun(j)
+        w = W[group_of_j]
+        len_of_S = len(S)
+        return w[group_of_j] / (1 + sum([w[grouping_fun(i)] * S[i] for i in range(len_of_S)]))**2
+    
+    def partial_derivative_of_accuracy(S, *W, agents_with_i, i, grouping_fun=None):
+        # Calculate the partial derivative of accuracy with respect to s_i
+        if grouping_fun is None:
+            grouping_fun = lambda _: 0
+        len_of_S = len(S)
+        derivative = 0
+        for i in range(len_of_S):
+            w = W[grouping_fun(i)]
+            denominator = 1 + sum([w[grouping_fun(j)] * S[j] for j in agents_with_i])
+            derivative += w[grouping_fun(i)] / (denominator ** 2)
+        
+        return derivative
+    
+    def update_share(S, W, i):
+        derivative = derivative_of_accuracy(S, *W, j=i, grouping_fun=lambda x: int((x / num_of_users) * num_of_groups))
+        s_updated = S[i]
+        if hlpr.params.method == "br":
+            s_updated = S[i] + s_lr * (derivative - costs[i])
+        elif hlpr.params.method == "br-bg": 
+            s_updated = S[i] + s_lr * (derivative - (1 - cost_scalar_beta) * costs[i])
+        elif hlpr.params.method == "br-shap":
+            # For FedBR-SV, we need to estimate of the Shapley value
+            fl = FLInstance(num_of_users, S, 0, 0, _eps=1)
+            derivative_f = lambda agents_with_i, i: \
+                partial_derivative_of_accuracy(S, *W, agents_with_i=agents_with_i, i=i, \
+                        grouping_fun=lambda x: int((x / num_of_users) * num_of_groups))
+            shapley_derivative = fl.compute_derivative_of_shapley_value(i, derivative_f) - costs[i]
+            s_updated = S[i] + s_lr * shapley_derivative
+        else :
+            raise ValueError("unknown method {} for best response".format(hlpr.params.method))
+        # print(s_updated)
+        if s_updated >= max_resource or s_updated <= 0:
+            return S[i]
+        else:
+            return s_updated
+
+    for epoch in range(hlpr.params.num_of_br + 1):
+        round_participants = hlpr.task.sample_users_for_round()
+        ## Update share for every participant
+        for user in round_participants:
+            s_vec[user.user_id] = update_share(s_vec, W, user.user_id)
+        ## Report the accuracy for all testing datasets
+        if epoch % 100 == 0:
+            logger.info(s_vec)
+            incurred_costs = [c * s for c, s in zip(costs, s_vec)]
+            logger.warning('Epoch: {}, Sum of s_i: {}, Costs: {}'.format(epoch, sum(s_vec), sum(incurred_costs)))
+
+    return s_vec
+
 def non_iid_main(params: Params, rotation_angles=[10, 90, 180]):
     """
     Main function for non-iid training.
@@ -351,7 +395,7 @@ def non_iid_main(params: Params, rotation_angles=[10, 90, 180]):
     fit_params['fl_eta'] = 1
     fit_params['rotation_angles'] = rotation_angles  # for rotation
     fit_helper = Helper(fit_params)    
-
+    print("Rotation angles", fit_helper.params.rotation_angles)
     min_size_train_loader = min(200, min([len(user.train_loader) for user in fit_helper.task.all_users()]))
     s_step = 200
     num_of_samples_per_dimension = min_size_train_loader // s_step
@@ -389,7 +433,29 @@ def non_iid_main(params: Params, rotation_angles=[10, 90, 180]):
             json.dump(fl_results, f, indent=4)
     
     logger.info("Fitted weights: {}".format(W))
-
+    if rotation_angles is not None:
+        type_of_agent = lambda x: int((x / params['fl_total_participants']) * types_of_data)
+        params['rotation_angles'] = [rotation_angles[type_of_agent(i)] for i in range(params['fl_total_participants'])]
+    main_hlpr = Helper(params)    
+    costs = [random.uniform(0, 0.001) for _ in range(len(main_hlpr.task.all_users()))]  # random costs for each user
+    fl_results["costs"] = costs
+    fl_results["W"] = W.tolist()
+    for m in ["br", "br-bg", "br-shap"]:
+        main_hlpr.params.method = m
+        logger.info("Running method: {}".format(m))
+        logger.warning("Begin best response calculation for {}!".format(m))
+        # s_vec = []
+        s_vec = best_response(main_hlpr, W, costs)
+        logger.warning("Finish best response calculation for {}!".format(m))
+        logger.warning("BE: [{}]".format(', '.join(['{:.2f}'.format(float(v)) for v in s_vec])))
+        accs = fl_run_with_fixed_share(main_hlpr, s_vec)
+        fl_results[m] = {
+            "BE": s_vec, "Acc": accs, 
+            "Costs": [costs[i] * s_vec[i] for i in range(len(s_vec))],
+            "Sum of s": sum(s_vec)
+        }
+    with open("out/{}_non_iid_fl_results.json".format(params["task"]), "w") as f:
+        json.dump(fl_results, f, indent=4)
 
 
 if __name__ == '__main__':
@@ -408,22 +474,16 @@ if __name__ == '__main__':
     params['current_time'] = datetime.now().strftime('%b.%d_%H.%M.%S')
     params['name'] = args.name
     params['method'] = args.method
-    params['realacc'] = args.real
-
-    helper = Helper(params)
-    logger.warning(create_table(params))
-    # helper.task.merge_test_data()
+    params['realacc'] = args.real   # Disabled for now
 
     try:
-        if helper.params.fl:
+        if params.get('fl', False):
             non_iid_main(params)
-            # print(accs)
-            # fl_run_with_fixed_share(helper)
         else:
-            run(helper, int(args.batch))
+            run(Helper(params), int(args.batch))
     except (KeyboardInterrupt):
-        logger.error(f"Fine. Deleted: {helper.params.folder_path}")
-        shutil.rmtree(helper.params.folder_path)
-        if helper.params.tb:
+        logger.error(f"Fine. Deleted: {params['folder_path']}")
+        shutil.rmtree(params['folder_path'])
+        if params['tb']:
             shutil.rmtree(f'runs/{args.name}')
     

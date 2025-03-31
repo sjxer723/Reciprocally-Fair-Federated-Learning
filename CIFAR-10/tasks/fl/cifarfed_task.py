@@ -3,8 +3,9 @@ from collections import defaultdict
 
 import numpy as np
 from torch.utils.data.dataloader import DataLoader
+from torch.utils.data import Dataset, DataLoader, SubsetRandomSampler
 from torch.utils.data.sampler import SubsetRandomSampler
-
+from torchvision.transforms import functional as F
 from tasks.cifar10_task import Cifar10Task
 from tasks.fl.fl_task import FederatedLearningTask
 
@@ -13,6 +14,7 @@ class CifarFedTask(FederatedLearningTask, Cifar10Task):
 
     def load_data(self) -> None:
         self.load_cifar_data()
+        print(f"Rotation Angles: {self.params.rotation_angles}")            
         if self.params.fl_sample_dirichlet:
             # sample indices for participants using Dirichlet distribution
             indices_per_participant = self.sample_dirichlet_train_data(
@@ -27,10 +29,10 @@ class CifarFedTask(FederatedLearningTask, Cifar10Task):
             all_test_range = list(range(len(self.test_dataset)))
             random.shuffle(all_train_range)
             random.shuffle(all_test_range)
-            train_loaders = [self.get_train_old(all_train_range, pos)
+            train_loaders = [self.get_train_old(all_train_range, pos, self.params.rotation_angles)
                              for pos in
                              range(self.params.fl_total_participants)]
-            test_loaders = [self.get_test_old(all_test_range, pos)
+            test_loaders = [self.get_test_old(all_test_range, pos, self.params.rotation_angles)
                              for pos in 
                              range(self.params.fl_total_participants)]
         print("Sum of train ", sum([len(loader) for loader in train_loaders]))
@@ -89,7 +91,7 @@ class CifarFedTask(FederatedLearningTask, Cifar10Task):
                                       indices))
         return train_loader
 
-    def get_train_old(self, all_range, model_no):
+    def get_train_old(self, all_range, model_no, rotation_angles):
         """
         This method equally splits the dataset.
         :param all_range:
@@ -100,13 +102,20 @@ class CifarFedTask(FederatedLearningTask, Cifar10Task):
         data_len = int(
             len(self.train_dataset) / self.params.fl_total_participants)
         sub_indices = all_range[model_no * data_len: (model_no + 1) * data_len]
-        train_loader = DataLoader(self.train_dataset,
-                                  batch_size=self.params.batch_size,
-                                  sampler=SubsetRandomSampler(
-                                      sub_indices))
+        # train_loader = DataLoader(self.train_dataset,
+        #                           batch_size=self.params.batch_size,
+        #                           sampler=SubsetRandomSampler(
+        #                               sub_indices))
+
+        if rotation_angles:
+            subset_dataset = ClientDataSet(self.train_dataset, sub_indices, rotation_angles[model_no])
+        else:
+            subset_dataset = ClientDataSet(self.train_dataset, sub_indices)
+        train_loader = DataLoader(subset_dataset, batch_size=self.params.batch_size, shuffle=True)
+
         return train_loader
 
-    def get_test_old(self, all_range, model_no):
+    def get_test_old(self, all_range, model_no, rotation_angles):
         """
         This method equally splits the dataset.
         :param all_range:
@@ -117,8 +126,35 @@ class CifarFedTask(FederatedLearningTask, Cifar10Task):
         data_len = int(
             len(self.test_dataset) / self.params.fl_total_participants)
         sub_indices = all_range[model_no * data_len: (model_no + 1) * data_len]
-        test_loader = DataLoader(self.test_dataset,
-                                  batch_size=self.params.batch_size,
-                                  sampler=SubsetRandomSampler(
-                                      sub_indices))
+        # test_loader = DataLoader(self.test_dataset,
+        #                           batch_size=self.params.batch_size,
+        #                           sampler=SubsetRandomSampler(
+        #                               sub_indices))
+
+        if rotation_angles:
+            subset_dataset = ClientDataSet(self.train_dataset, sub_indices, rotation_angles[model_no])
+        else:
+            subset_dataset = ClientDataSet(self.train_dataset, sub_indices)
+        
+        test_loader = DataLoader(subset_dataset, batch_size=self.params.batch_size, shuffle=False)
+    
         return test_loader
+    
+
+class ClientDataSet(Dataset):
+    def __init__(self, dataset, indices, rotate_angle=0):
+        self.dataset = dataset
+        self.indices = indices
+        self.rotate_angle = rotate_angle
+        self.transformed_images = []
+
+        for idx in self.indices:
+            image, label = self.dataset[idx]
+            image = F.rotate(image, self.rotate_angle)
+            self.transformed_images.append((image, label))
+
+    def __getitem__(self, index):
+        return self.transformed_images[index]
+
+    def __len__(self):
+        return len(self.indices)

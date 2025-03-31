@@ -126,6 +126,7 @@ class Params:
     fl_client_train_ratio: float = None
     realacc: bool = False
     rotation_angles: List[int] = None
+    num_of_br: int = 1000
 
     def __post_init__(self):
         # enable logging anyways when saving statistics
