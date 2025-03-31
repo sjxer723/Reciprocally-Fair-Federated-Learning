@@ -269,7 +269,7 @@ def fl_run_with_closed_form(clients: list[Client], w, method:str, num_rounds=300
 
     return global_model, accs, s_vec
 
-if __name__ == "__main__":
+def _main_for_synthetic_data():
     g = GroundTruth()
     A, B, c = g.parameters()
     clients = []
@@ -294,3 +294,6 @@ if __name__ == "__main__":
         print("Shares of    {}: {}".format(method, s_vec))
         print("Costs  of    {}: {}".format(method, cost_of_clients))
         print("Welfare of   {}: {}".format(method, sum(accs) - sum(cost_of_clients)))
+
+if __name__ == "__main__":
+    _main_for_synthetic_data()

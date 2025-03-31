@@ -89,7 +89,7 @@ def create_data(X, y, sample_size=10000, test_size=0.2, random_state=42, weights
         tf.cast(y_test, tf.int64),
     )
 
-max_size = 10240
+max_size = 2000
 n = 2  # number of players
 num_of_groups = 2
 X_train_A, X_test_A, y_train_A, y_test_A = create_data(X, y, sample_size=max_size, weights=[0.3, 0.7])
@@ -104,12 +104,12 @@ player_B.compile(optimizer='adam', loss=loss_fn)
 
 epochs_per_round = 1
 num_rounds = 10
-s_lr = 100
-T = 1000 # iterations of best response
+s_lr = 1000
+T = 2000 # iterations of best response
 cost_scalar_beta = 0.8
 
-def run_fl_with_fixed_share(s_vec, verbose=False):
-    for round_num in range(num_rounds):
+def run_fl_with_fixed_share(s_vec, _num_rounds=10, verbose=False):
+    for round_num in range(_num_rounds):
         if verbose:
             print(f'Federated Learning Round {round_num + 1}/{num_rounds}')
         
@@ -227,14 +227,14 @@ def best_response(W, costs, method:str, verbose=False):
 
 
 if __name__ == "__main__":
-    W = fit_closed_form_accuracy(fit_sample_delta=5120, n=2)
-    costs = [random.uniform(0, 1e-6) for _ in range(n)]  # random costs for each user
+    W = fit_closed_form_accuracy(fit_sample_delta=500, n=2)
+    costs = [random.uniform(0, 1e-7) for _ in range(n)]  # random costs for each user
 
     for method in ["br", "br-bg", "br-shap"]:
         s_vec = best_response(W, costs, method)    
         print("Method: {}, BE: {}".format(method, s_vec))
 
-        accs = run_fl_with_fixed_share(s_vec)
+        accs = run_fl_with_fixed_share(s_vec, _num_rounds=100)
         cost_of_clients = [costs[i] * s_vec[i] for i in range(n)]
         print("Accuracy of  {}: {}".format(method, accs))
         print("Shares of    {}: {}".format(method, s_vec))
