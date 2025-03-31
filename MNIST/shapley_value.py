@@ -42,7 +42,26 @@ class FLInstance:
             shapley_values.append(derivative)
         return sum(shapley_values) / num_perms
 
+    def compute_shapley_values(self, f):
+        shapley_values = [0 for _ in range(self.n)]
+        permutations = []
 
+        num_perms = int(self.n * np.log(self.n) / self.eps)
+        permutations = set()
+        for _ in range(num_perms):
+            perm = np.random.permutation(self.n)
+            permutations.add(tuple(perm))
+
+        for perm in permutations:
+            for i in range(self.n):
+                agents_with_i = perm[:i + 1]
+                agents_without_i = perm[:i]
+                shapley_val_perm_i = f(agents_with_i) - f(agents_without_i)
+                shapley_values[perm[i]] += shapley_val_perm_i
+        shapley_values = [val / num_perms for val in shapley_values]
+        
+        return shapley_values
+    
     # def compute_shapley_value_derivative(self, i):
     #     permutations = None
     #     shapley_values = []

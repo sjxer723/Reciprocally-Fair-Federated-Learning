@@ -41,7 +41,7 @@ pip install tqdm
 
 
 # Run the python script(code)
-python main.py --method br --params fashionfedavg.yaml
+python main.py --method br --params fedavg.yaml
 # Or to run multiple instances of the python script(code)
 #srun python3 my_code.py
 
