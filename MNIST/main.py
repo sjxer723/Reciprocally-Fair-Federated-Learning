@@ -174,7 +174,7 @@ class ClientThread(Thread):
 
 def fl_run_with_fixed_share(hlpr: Helper, s_vec, verbose=False):
     hlpr.task.model = hlpr.task.build_model()
-    accs = {a.user_id: 0 for a in hlpr.task.all_users()}
+    accs = [0.0 for _ in range(len(s_vec))]
 
     for epoch in range(hlpr.params.epochs + 1):
         global_model = hlpr.task.model
@@ -291,7 +291,7 @@ def non_iid_main(params: Params, rotation_angles=None, verbose=False):
     types_of_data = 3
     fit_params['fl_total_participants'] = types_of_data
     fit_params['fl_no_models'] = types_of_data
-    fit_params['epochs'] = 2
+    fit_params['epochs'] = 100
     fit_params['rotation_angles'] = rotation_angles  # for rotation
     fit_helper = Helper(fit_params)    
 
@@ -344,10 +344,12 @@ def non_iid_main(params: Params, rotation_angles=None, verbose=False):
         main_hlpr.params.method = m
         logger.info("Running method: {}".format(m))
         logger.warning("Begin best response calculation for {}!".format(m))
+        # s_vec = []
         s_vec = best_response(main_hlpr, W, costs)
         logger.warning("Finish best response calculation for {}!".format(m))
         logger.warning("BE: [{}]".format(', '.join(['{:.2f}'.format(float(v)) for v in s_vec])))
-
+        
+        # accs = []
         accs = fl_run_with_fixed_share(main_hlpr, s_vec, verbose=True)
         fl_results[m] = {
             "BE": s_vec, "Acc": accs, 

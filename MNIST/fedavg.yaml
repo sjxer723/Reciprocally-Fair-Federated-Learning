@@ -8,7 +8,7 @@ test_batch_size: 100
 lr: 0.01
 momentum: 0.9
 decay: 0.0001
-epochs: 1000
+epochs: 300
 save_on_epochs: [100, 200, 300]
 optimizer: SGD
 log_interval: 100
@@ -28,7 +28,7 @@ transform_train: False
 
 fl_client_train_ratio: 0.9091
 fl_no_models: 10
-fl_total_participants: 100
+fl_total_participants: 30
 
 fl_eta: 1
 fl_q: 0.1
