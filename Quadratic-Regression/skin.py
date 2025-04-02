@@ -3,8 +3,10 @@ import pandas as pd
 import tensorflow as tf
 from keras.layers import Dense, BatchNormalization
 import os, math
+import argparse
 import random
 import itertools
+import json
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import MinMaxScaler
 from scipy.optimize import curve_fit
@@ -227,9 +229,16 @@ def best_response(W, costs, method:str, verbose=False):
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="skin disease forecasting")
+    parser.add_argument('--n', type=int, default=1, help='number of run')
+
+    args = parser.parse_args()
+    results_json = {}
     W = fit_closed_form_accuracy(fit_sample_delta=500, n=2)
     costs = [random.uniform(0, 1e-7) for _ in range(n)]  # random costs for each user
-
+    
+    results_json['W'] = W.tolist()
+    results_json['Costs'] = costs
     for method in ["br", "br-bg", "br-shap"]:
         s_vec = best_response(W, costs, method)    
         print("Method: {}, BE: {}".format(method, s_vec))
@@ -240,3 +249,11 @@ if __name__ == "__main__":
         print("Shares of    {}: {}".format(method, s_vec))
         print("Costs  of    {}: {}".format(method, cost_of_clients))
         print("Welfare of   {}: {}".format(method, sum(accs) - sum(cost_of_clients)))
+        results_json[method] = {
+            "Acc": accs,
+            "BE": s_vec,
+            "Costs": cost_of_clients,
+            "Sum of s": sum(s_vec),
+        }
+    with open('skin_fed{}.json'.format(args.n), 'w') as f:
+        json.dump(results_json, f)

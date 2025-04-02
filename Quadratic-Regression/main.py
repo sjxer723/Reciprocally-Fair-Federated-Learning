@@ -4,6 +4,7 @@ import itertools
 import torch.nn as nn
 import torch.optim as optim
 import numpy as np
+import json
 from scipy.optimize import curve_fit
 
 ## Basic configurations
@@ -272,6 +273,7 @@ def fl_run_with_closed_form(clients: list[Client], w, method:str, num_rounds=300
 def _main_for_synthetic_data():
     g = GroundTruth()
     A, B, c = g.parameters()
+    results_json = {}
     clients = []
     for i in range(num_of_labels):
         client = Client(A, B, c, training_size=training_size, testing_size=testing_size, label=i)
@@ -284,9 +286,15 @@ def _main_for_synthetic_data():
     print("Shares of Fed-Shap  :", s_vec)
     print("Costs  of Fed-Shap  :", cost_of_clients)
     print("Welfare of Fed-Shap :", sum(accs) - sum(cost_of_clients))
-    
+    results_json['br-shap'] = {
+        "Acc": accs,
+        "BE": s_vec,
+        "Costs": cost_of_clients,
+        "Sum of s": sum(s_vec),
+    }
     ## Run the FL protocol with closed form
     w = fit_closed_form_accuracy(clients)     # find the fitted closed form accuracys
+    results_json['W'] = w.tolist()
     for method in ["br", "br-bg"]:
         global_model, accs, s_vec = fl_run_with_closed_form(clients, w, method)
         cost_of_clients = [costs[i] * s_vec[i] for i in range(n)]
@@ -294,6 +302,14 @@ def _main_for_synthetic_data():
         print("Shares of    {}: {}".format(method, s_vec))
         print("Costs  of    {}: {}".format(method, cost_of_clients))
         print("Welfare of   {}: {}".format(method, sum(accs) - sum(cost_of_clients)))
+        results_json[method] = {
+            "Acc": accs,
+            "BE": s_vec,
+            "Costs": cost_of_clients,
+            "Sum of s": sum(s_vec),
+        }
+    with open("quad_fed.json", 'w') as f:
+        json.dump(results_json, f)
 
 if __name__ == "__main__":
     _main_for_synthetic_data()

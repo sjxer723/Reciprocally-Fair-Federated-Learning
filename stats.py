@@ -3,12 +3,20 @@ import json
 import pandas as pd
 from MNIST.shapley_value import FLInstance
 
-def statistics(path, prefix, name):
+total_datashares = {
+    "skin": 4000, 
+    "Quadratic": 2000,
+    "CIFAR-10": 810,  # Example value, replace with actual total data shares for CIFAR-10
+    "FashionMNIST": 5440,  # Example value, replace with actual total data shares for FashionMNIST   
+    "MNIST": 5440  # Example value, replace with actual total data shares for MNIST
+}
+
+def statistics(path, prefix, name, num_of_clients=30, num_of_types=3):
     all_results = {m: [] for m in ["br", "br-bg", "br-shap"]}
     avg_statistics, median_statistics = [], []
     num_of_attempts = 3
-    num_of_clients = 30
-    num_of_types = 3
+    num_of_clients = num_of_clients
+    num_of_types = num_of_types
     cost_scalar_beta = 0.8
 
     for i in range(1, 1+num_of_attempts):
@@ -16,7 +24,7 @@ def statistics(path, prefix, name):
         try:
             with open(result_file_path, 'r') as f:
                 data = json.load(f)
-                costs = data.get("costs", [])
+                # costs = data.get("costs", [])
                 W = data.get("W", [])
         except:
             print(f"Error reading {result_file_path}. Please run experiment first!")
@@ -42,6 +50,7 @@ def statistics(path, prefix, name):
         for m in ["br", "br-bg", "br-shap"]:
             result_of_m = data.get(m, None)
             be = result_of_m.get("BE", [])
+            costs = result_of_m.get("Costs", [])
             FL = FLInstance(num_of_clients, be, 0, 0, _eps=0.1)  # alpha and beta are not used here
             shapley_shares = FL.compute_shapley_values(lambda clients: accuracy_func(be, clients))
             if m == "br":
@@ -55,7 +64,7 @@ def statistics(path, prefix, name):
 
             reciprocity = min(reciprocities)          
             all_results[m].append({
-                "Data Shares": result_of_m.get("Sum of s"),
+                "Data Shares": result_of_m.get("Sum of s") / total_datashares[name],
                 "Accuracy": sum(result_of_m.get("Acc", 0.0)) / num_of_clients,  
                 "Welfare":  (sum(result_of_m.get("Acc", [])) - sum(result_of_m.get("Costs", []))) \
                             / num_of_clients,
@@ -94,13 +103,18 @@ def statistics(path, prefix, name):
     return avg_df, median_df
 
 info = [
+    ("Quadratic-Regression/out/", "quad_fed", "Quadratic"),
+    ("Quadratic-Regression/out/", "skin_fed", "Quadratic"),
     ("CIFAR-10/out", "CifarFed_non_iid_fl_results", "CIFAR-10"),
     ("MNIST/out/FashionMNIST", "FashionMNIST_FedAvg_non_iid_fl_results", "FashionMNIST"),
     ("MNIST/out/MNIST", "MNIST_FedAvg_non_iid_fl_results", "MNIST")
 ]
 
 for path, prefix, name in info:
-    avg_df, median_df = statistics(path, prefix, name)
+    if name == "Quadratic":
+        avg_df, median_df = statistics(path, prefix, name, 2, 2)
+    else:
+        avg_df, median_df = statistics(path, prefix, name)
     avg_df.to_csv(os.path.join(path, f"{prefix}_avg_statistics.csv"), index=False)
     median_df.to_csv(os.path.join(path, f"{prefix}_median_statistics.csv"), index=False)
 

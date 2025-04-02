@@ -46,11 +46,15 @@ class FLInstance:
         shapley_values = [0 for _ in range(self.n)]
         permutations = []
 
-        num_perms = int(self.n * np.log(self.n) / self.eps)
-        permutations = set()
-        for _ in range(num_perms):
-            perm = np.random.permutation(self.n)
-            permutations.add(tuple(perm))
+        if self.n <= 5:
+            permutations = list(itertools.permutations(range(self.n)))
+            num_perms = len(permutations)
+        else:
+            num_perms = int(self.n * np.log(self.n) / self.eps)
+            permutations = set()
+            for _ in range(num_perms):
+                perm = np.random.permutation(self.n)
+                permutations.add(tuple(perm))
 
         for perm in permutations:
             for i in range(self.n):

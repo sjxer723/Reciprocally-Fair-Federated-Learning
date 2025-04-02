@@ -338,6 +338,8 @@ def non_iid_main(params: Params, rotation_angles=None, verbose=False):
         params['rotation_angles'] = [rotation_angles[type_of_agent(i)] for i in range(params['fl_total_participants'])]
     main_hlpr = Helper(params)    
     costs = [random.uniform(0, 0.001) for _ in range(len(main_hlpr.task.all_users()))]  # random costs for each user
+    print(costs)
+    print([len(user.train_loader) for user in main_hlpr.task.all_users()])
     fl_results["costs"] = costs
     fl_results["W"] = W.tolist()
     for m in ["br", "br-bg", "br-shap"]:
@@ -374,7 +376,8 @@ if __name__ == '__main__':
     params['name'] = args.name
     params['method'] = args.method
     params['idtest'] = args.idtest
-
+    params['random_seed'] = random.randint(0, 10)
+    
     non_iid_main(params, rotation_angles=[10, 90, 180])
     ## Make all the testing dataset the same
     # if args.idtest:
