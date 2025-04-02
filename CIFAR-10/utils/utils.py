@@ -16,17 +16,22 @@ def record_time(params: Params, t=None, name=None):
 
 
 def dict_html(dict_obj, current_time):
-    out = ''
+    out = ""
     for key, value in dict_obj.items():
-
         # filter out not needed parts:
-        if key in ['poisoning_test', 'test_batch_size', 'discount_size',
-                   'folder_path', 'log_interval',
-                   'coefficient_transfer', 'grad_threshold']:
+        if key in [
+            "poisoning_test",
+            "test_batch_size",
+            "discount_size",
+            "folder_path",
+            "log_interval",
+            "coefficient_transfer",
+            "grad_threshold",
+        ]:
             continue
 
-        out += f'<tr><td>{key}</td><td>{value}</td></tr>'
-    output = f'<h4>Params for model: {current_time}:</h4><table>{out}</table>'
+        out += f"<tr><td>{key}</td><td>{value}</td></tr>"
+    output = f"<h4>Params for model: {current_time}:</h4><table>{out}</table>"
     return output
 
 
@@ -54,28 +59,29 @@ def create_table(params: dict):
     data = "| name | value | \n |-----|-----|"
 
     for key, value in params.items():
-        data += '\n' + f"| {key} | {value} |"
+        data += "\n" + f"| {key} | {value} |"
 
     return data
 
 
 def create_logger():
     """
-        Setup the logging environment
+    Setup the logging environment
     """
     log = logging.getLogger()  # root logger
     log.setLevel(logging.DEBUG)
-    format_str = '%(asctime)s - %(levelname)-8s - %(message)s'
-    date_format = '%Y-%m-%d %H:%M:%S'
+    format_str = "%(asctime)s - %(levelname)-8s - %(message)s"
+    date_format = "%Y-%m-%d %H:%M:%S"
     if os.isatty(2):
-        cformat = '%(log_color)s' + format_str
-        colors = {'DEBUG': 'reset',
-                  'INFO': 'reset',
-                  'WARNING': 'bold_yellow',
-                  'ERROR': 'bold_red',
-                  'CRITICAL': 'bold_red'}
-        formatter = colorlog.ColoredFormatter(cformat, date_format,
-                                              log_colors=colors)
+        cformat = "%(log_color)s" + format_str
+        colors = {
+            "DEBUG": "reset",
+            "INFO": "reset",
+            "WARNING": "bold_yellow",
+            "ERROR": "bold_red",
+            "CRITICAL": "bold_red",
+        }
+        formatter = colorlog.ColoredFormatter(cformat, date_format, log_colors=colors)
     else:
         formatter = logging.Formatter(format_str, date_format)
     stream_handler = logging.StreamHandler()

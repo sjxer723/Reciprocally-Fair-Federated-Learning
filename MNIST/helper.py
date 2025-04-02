@@ -19,7 +19,7 @@ from tasks.task import Task
 from utils.parameters import Params
 from utils.utils import create_logger, create_table
 
-logger = logging.getLogger('logger')
+logger = logging.getLogger("logger")
 
 
 class Helper:
@@ -32,8 +32,14 @@ class Helper:
     def __init__(self, params):
         self.params = Params(**params)
 
-        self.times = {'backward': list(), 'forward': list(), 'step': list(),
-                      'scales': list(), 'total': list(), 'poison': list()}
+        self.times = {
+            "backward": list(),
+            "forward": list(),
+            "step": list(),
+            "scales": list(),
+            "total": list(),
+            "poison": list(),
+        }
         if self.params.random_seed is not None:
             self.fix_random(self.params.random_seed)
 
@@ -41,41 +47,44 @@ class Helper:
         self.make_task()
         self.make_synthesizer()
         self.attack = Attack(self.params, self.synthesizer)
-        self.best_loss = float('inf')
+        self.best_loss = float("inf")
 
     def make_task(self):
         name_lower = self.params.task.lower()
         name_cap = self.params.task
         if self.params.fl:
-            module_name = f'tasks.fl.{name_lower}_task'
-            path = f'tasks/fl/{name_lower}_task.py'
+            module_name = f"tasks.fl.{name_lower}_task"
+            path = f"tasks/fl/{name_lower}_task.py"
         else:
-            module_name = f'tasks.{name_lower}_task'
-            path = f'tasks/{name_lower}_task.py'
+            module_name = f"tasks.{name_lower}_task"
+            path = f"tasks/{name_lower}_task.py"
         try:
             task_module = importlib.import_module(module_name)
-            task_class = getattr(task_module, f'{name_cap}Task')
-            print(f'{name_cap}Task')
+            task_class = getattr(task_module, f"{name_cap}Task")
+            print(f"{name_cap}Task")
         except (ModuleNotFoundError, AttributeError):
-            raise ModuleNotFoundError(f'Your task: {self.params.task} should '
-                                      f'be defined as a class '
-                                      f'{name_cap}'
-                                      f'Task in {path}')
+            raise ModuleNotFoundError(
+                f"Your task: {self.params.task} should "
+                f"be defined as a class "
+                f"{name_cap}"
+                f"Task in {path}"
+            )
         self.task = task_class(self.params)
 
     def make_synthesizer(self):
         name_lower = self.params.synthesizer.lower()
         name_cap = self.params.synthesizer
-        module_name = f'synthesizers.{name_lower}_synthesizer'
+        module_name = f"synthesizers.{name_lower}_synthesizer"
         try:
             synthesizer_module = importlib.import_module(module_name)
-            task_class = getattr(synthesizer_module, f'{name_cap}Synthesizer')
+            task_class = getattr(synthesizer_module, f"{name_cap}Synthesizer")
         except (ModuleNotFoundError, AttributeError):
             raise ModuleNotFoundError(
-                f'The synthesizer: {self.params.synthesizer}'
-                f' should be defined as a class '
-                f'{name_cap}Synthesizer in '
-                f'synthesizers/{name_lower}_synthesizer.py')
+                f"The synthesizer: {self.params.synthesizer}"
+                f" should be defined as a class "
+                f"{name_cap}Synthesizer in "
+                f"synthesizers/{name_lower}_synthesizer.py"
+            )
         self.synthesizer = task_class(self.task)
 
     def make_folders(self):
@@ -84,53 +93,55 @@ class Helper:
             try:
                 os.mkdir(self.params.folder_path)
             except FileExistsError:
-                log.info('Folder already exists')
+                log.info("Folder already exists")
 
-            fh = logging.FileHandler(
-                filename=f'{self.params.folder_path}/log.txt')
-            formatter = logging.Formatter('%(asctime)s - %(name)s '
-                                          '- %(levelname)s - %(message)s')
+            fh = logging.FileHandler(filename=f"{self.params.folder_path}/log.txt")
+            formatter = logging.Formatter(
+                "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+            )
             fh.setFormatter(formatter)
             if not log.handlers:
                 log.addHandler(fh)
-            log.warning(f'Logging to: {self.params.folder_path}')
+            log.warning(f"Logging to: {self.params.folder_path}")
 
-            with open(f'{self.params.folder_path}/params.yaml.txt', 'w') as f:
+            with open(f"{self.params.folder_path}/params.yaml.txt", "w") as f:
                 yaml.dump(self.params, f)
 
         if self.params.tb:
-            os.makedirs('runs', exist_ok=True)
-            wr = SummaryWriter(log_dir=f'runs/{self.params.name}')
+            os.makedirs("runs", exist_ok=True)
+            wr = SummaryWriter(log_dir=f"runs/{self.params.name}")
             self.tb_writer = wr
             params_dict = self.params.to_dict()
             table = create_table(params_dict)
-            self.tb_writer.add_text('Model Params', table)
+            self.tb_writer.add_text("Model Params", table)
 
     def save_model(self, model=None, epoch=0, val_loss=0):
-
         if self.params.save_model:
             logger.info(f"Saving model to {self.params.folder_path}.")
-            model_name = '{0}/model_last.pt.tar'.format(self.params.folder_path)
-            saved_dict = {'state_dict': model.state_dict(),
-                          'epoch': epoch,
-                          'lr': self.params.lr,
-                          'params_dict': self.params.to_dict()}
+            model_name = "{0}/model_last.pt.tar".format(self.params.folder_path)
+            saved_dict = {
+                "state_dict": model.state_dict(),
+                "epoch": epoch,
+                "lr": self.params.lr,
+                "params_dict": self.params.to_dict(),
+            }
             self.save_checkpoint(saved_dict, False, model_name)
             if epoch in self.params.save_on_epochs:
-                logger.info(f'Saving model on epoch {epoch}')
-                self.save_checkpoint(saved_dict, False,
-                                     filename=f'{model_name}.epoch_{epoch}')
+                logger.info(f"Saving model on epoch {epoch}")
+                self.save_checkpoint(
+                    saved_dict, False, filename=f"{model_name}.epoch_{epoch}"
+                )
             if val_loss < self.best_loss:
-                self.save_checkpoint(saved_dict, False, f'{model_name}.best')
+                self.save_checkpoint(saved_dict, False, f"{model_name}.best")
                 self.best_loss = val_loss
 
-    def save_checkpoint(self, state, is_best, filename='checkpoint.pth.tar'):
+    def save_checkpoint(self, state, is_best, filename="checkpoint.pth.tar"):
         if not self.params.save_model:
             return False
         torch.save(state, filename)
 
         if is_best:
-            copyfile(filename, 'model_best.pth.tar')
+            copyfile(filename, "model_best.pth.tar")
 
     def flush_writer(self):
         if self.tb_writer:
@@ -144,25 +155,32 @@ class Helper:
             return False
 
     def report_training_losses_scales(self, batch_id, epoch):
-        if not self.params.report_train_loss or \
-                batch_id % self.params.log_interval != 0:
+        if (
+            not self.params.report_train_loss
+            or batch_id % self.params.log_interval != 0
+        ):
             return
         total_batches = len(self.task.train_loader)
-        losses = [f'{x}: {np.mean(y):.2f}'
-                  for x, y in self.params.running_losses.items()]
-        scales = [f'{x}: {np.mean(y):.2f}'
-                  for x, y in self.params.running_scales.items()]
+        losses = [
+            f"{x}: {np.mean(y):.2f}" for x, y in self.params.running_losses.items()
+        ]
+        scales = [
+            f"{x}: {np.mean(y):.2f}" for x, y in self.params.running_scales.items()
+        ]
         logger.info(
-            f'Epoch: {epoch:3d}. '
-            f'Batch: {batch_id:5d}/{total_batches}. '
-            f' Losses: {losses}.'
-            f' Scales: {scales}')
+            f"Epoch: {epoch:3d}. "
+            f"Batch: {batch_id:5d}/{total_batches}. "
+            f" Losses: {losses}."
+            f" Scales: {scales}"
+        )
         for name, values in self.params.running_losses.items():
-            self.plot(epoch * total_batches + batch_id, np.mean(values),
-                      f'Train/Loss_{name}')
+            self.plot(
+                epoch * total_batches + batch_id, np.mean(values), f"Train/Loss_{name}"
+            )
         for name, values in self.params.running_scales.items():
-            self.plot(epoch * total_batches + batch_id, np.mean(values),
-                      f'Train/Scale_{name}')
+            self.plot(
+                epoch * total_batches + batch_id, np.mean(values), f"Train/Scale_{name}"
+            )
 
         self.params.running_losses = defaultdict(list)
         self.params.running_scales = defaultdict(list)
@@ -171,7 +189,7 @@ class Helper:
     def fix_random(seed=1):
         from torch.backends import cudnn
 
-        logger.warning('Setting random_seed seed for reproducible results.')
+        logger.warning("Setting random_seed seed for reproducible results.")
         random.seed(seed)
         torch.manual_seed(seed)
         torch.cuda.manual_seed_all(seed)

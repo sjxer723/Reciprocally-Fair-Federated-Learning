@@ -32,7 +32,6 @@ class Batch:
             aux = None
         return Batch(self.batch_id, inputs, labels, aux)
 
-
     def clip(self, batch_size):
         if batch_size is None:
             return self

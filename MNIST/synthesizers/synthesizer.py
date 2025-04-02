@@ -11,20 +11,19 @@ class Synthesizer:
         self.task = task
         self.params = task.params
 
-    def make_backdoor_batch(self, batch: Batch, test=False, attack=True, ratio=None) -> Batch:
-
+    def make_backdoor_batch(
+        self, batch: Batch, test=False, attack=True, ratio=None
+    ) -> Batch:
         # Don't attack if only normal loss task.
-        if (not attack) or (self.params.loss_tasks == ['normal'] and not test):
+        if (not attack) or (self.params.loss_tasks == ["normal"] and not test):
             return batch
 
         if ratio is not None:
-            attack_portion = round(
-                batch.batch_size * ratio)
+            attack_portion = round(batch.batch_size * ratio)
         elif test:
             attack_portion = batch.batch_size
         else:
-            attack_portion = round(
-                batch.batch_size * self.params.poisoning_proportion)
+            attack_portion = round(batch.batch_size * self.params.poisoning_proportion)
 
         backdoored_batch = batch.clone()
         self.apply_backdoor(backdoored_batch, attack_portion)

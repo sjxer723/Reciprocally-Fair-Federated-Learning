@@ -42,22 +42,25 @@ class MGDASolver:
                 if (i, j) not in dps:
                     dps[(i, j)] = 0.0
                     for k in range(len(vecs[i])):
-                        dps[(i, j)] += torch.dot(vecs[i][k].view(-1),
-                                                 vecs[j][k].view(-1)).detach()
+                        dps[(i, j)] += torch.dot(
+                            vecs[i][k].view(-1), vecs[j][k].view(-1)
+                        ).detach()
                     dps[(j, i)] = dps[(i, j)]
                 if (i, i) not in dps:
                     dps[(i, i)] = 0.0
                     for k in range(len(vecs[i])):
-                        dps[(i, i)] += torch.dot(vecs[i][k].view(-1),
-                                                 vecs[i][k].view(-1)).detach()
+                        dps[(i, i)] += torch.dot(
+                            vecs[i][k].view(-1), vecs[i][k].view(-1)
+                        ).detach()
                 if (j, j) not in dps:
                     dps[(j, j)] = 0.0
                     for k in range(len(vecs[i])):
-                        dps[(j, j)] += torch.dot(vecs[j][k].view(-1),
-                                                 vecs[j][k].view(-1)).detach()
-                c, d = MGDASolver._min_norm_element_from2(dps[(i, i)],
-                                                          dps[(i, j)],
-                                                          dps[(j, j)])
+                        dps[(j, j)] += torch.dot(
+                            vecs[j][k].view(-1), vecs[j][k].view(-1)
+                        ).detach()
+                c, d = MGDASolver._min_norm_element_from2(
+                    dps[(i, i)], dps[(i, j)], dps[(j, j)]
+                )
                 if d < dmin:
                     dmin = d
                     sol = [(i, j), c, d]
@@ -128,9 +131,9 @@ class MGDASolver:
                     v1v1 += sol_vec[i] * sol_vec[j] * dps[(i, j)]
                     v1v2 += sol_vec[i] * new_point[j] * dps[(i, j)]
                     v2v2 += new_point[i] * new_point[j] * dps[(i, j)]
-            nc, nd = MGDASolver._min_norm_element_from2(v1v1.item(),
-                                                        v1v2.item(),
-                                                        v2v2.item())
+            nc, nd = MGDASolver._min_norm_element_from2(
+                v1v1.item(), v1v2.item(), v2v2.item()
+            )
             # try:
             new_sol_vec = nc * sol_vec + (1 - nc) * new_point
             # except AttributeError:
@@ -194,22 +197,27 @@ class MGDASolver:
 
 def gradient_normalizers(grads, losses, normalization_type):
     gn = {}
-    if normalization_type == 'l2':
+    if normalization_type == "l2":
         for t in grads:
             gn[t] = torch.sqrt(
-                torch.stack([gr.pow(2).sum().data for gr in grads[t]]).sum())
-    elif normalization_type == 'loss':
+                torch.stack([gr.pow(2).sum().data for gr in grads[t]]).sum()
+            )
+    elif normalization_type == "loss":
         for t in grads:
             gn[t] = min(losses[t].mean(), 10.0)
-    elif normalization_type == 'loss+':
+    elif normalization_type == "loss+":
         for t in grads:
-            gn[t] = min(losses[t].mean() * torch.sqrt(
-                torch.stack([gr.pow(2).sum().data for gr in grads[t]]).sum()),
-                        10)
+            gn[t] = min(
+                losses[t].mean()
+                * torch.sqrt(
+                    torch.stack([gr.pow(2).sum().data for gr in grads[t]]).sum()
+                ),
+                10,
+            )
 
-    elif normalization_type == 'none' or normalization_type == 'eq':
+    elif normalization_type == "none" or normalization_type == "eq":
         for t in grads:
             gn[t] = 1.0
     else:
-        raise ValueError('ERROR: Invalid Normalization Type')
+        raise ValueError("ERROR: Invalid Normalization Type")
     return gn

@@ -3,11 +3,11 @@ import torch.nn as nn
 
 class Model(nn.Module):
     """
-    Base class for models with added support for GradCam activation map
-    and a SentiNet defense. The GradCam design is taken from:
-https://medium.com/@stepanulyanin/implementing-grad-cam-in-pytorch-ea0937c31e82
-    If you are not planning to utilize SentiNet defense just import any model
-    you like for your tasks.
+        Base class for models with added support for GradCam activation map
+        and a SentiNet defense. The GradCam design is taken from:
+    https://medium.com/@stepanulyanin/implementing-grad-cam-in-pytorch-ea0937c31e82
+        If you are not planning to utilize SentiNet defense just import any model
+        you like for your tasks.
     """
 
     def __init__(self):
@@ -25,7 +25,7 @@ https://medium.com/@stepanulyanin/implementing-grad-cam-in-pytorch-ea0937c31e82
 
     def switch_grads(self, enable=True):
         for i, n in self.named_parameters():
-                n.requires_grad_(enable)
+            n.requires_grad_(enable)
 
     def features(self, x):
         """

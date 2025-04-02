@@ -28,7 +28,7 @@ from tasks.fl.fl_user import FLUser
 from tasks.batch import Batch
 from utils.parameters import Params
 
-logger = logging.getLogger('logger')
+logger = logging.getLogger("logger")
 
 
 class MNIST_FedAvgTask(FederatedLearningTask):
@@ -45,20 +45,20 @@ class MNIST_FedAvgTask(FederatedLearningTask):
 
     fl_train_loaders: List[Any] = None
     fl_test_loaders: List[Any] = None
-    ignored_weights = ['num_batches_tracked'] #['tracked', 'running']
+    ignored_weights = ["num_batches_tracked"]  # ['tracked', 'running']
     adversaries: List[int] = None
 
     def __init__(self, params: Params):
         self.params = params
         self.init_task()
-    
+
     def make_criterion(self) -> Module:
         """Initialize with Cross Entropy by default.
 
         We use reduction `none` to support gradient shaping defense.
         :return:
         """
-        return nn.CrossEntropyLoss(reduction='mean')
+        return nn.CrossEntropyLoss(reduction="mean")
 
     def make_scheduler(self) -> None:
         if self.params.scheduler:
@@ -89,13 +89,14 @@ class MNIST_FedAvgTask(FederatedLearningTask):
         for metric in metrics:
             metric.reset_metric()
 
-    def report_metrics(self, metrics, step, prefix='',
-                       tb_writer=None, tb_prefix='Metric/'):
+    def report_metrics(
+        self, metrics, step, prefix="", tb_writer=None, tb_prefix="Metric/"
+    ):
         metric_text = []
         for metric in metrics:
             metric_text.append(str(metric))
             metric.plot(tb_writer, step, tb_prefix=tb_prefix)
-        logger.warning(f'{prefix} {step:4d}. {" | ".join(metric_text)}')
+        logger.warning(f"{prefix} {step:4d}. {' | '.join(metric_text)}")
 
         return metrics[0].get_main_metric_value(), metrics[1].get_main_metric_value()
 
@@ -133,16 +134,20 @@ class MNIST_FedAvgTask(FederatedLearningTask):
 
     def sample_users_for_round(self, epoch) -> List[FLUser]:
         sampled_ids = random.sample(
-            range(self.params.fl_total_participants),
-            self.params.fl_no_models)
+            range(self.params.fl_total_participants), self.params.fl_no_models
+        )
 
         sampled_users = []
         for pos, user_id in enumerate(sampled_ids):
             train_loader = self.fl_train_loaders[user_id]
             test_loader = self.fl_test_loaders[user_id]
             compromised = self.check_user_compromised(user_id)
-            user = FLUser(user_id, compromised=compromised,
-                          train_loader=train_loader, test_loader=test_loader)
+            user = FLUser(
+                user_id,
+                compromised=compromised,
+                train_loader=train_loader,
+                test_loader=test_loader,
+            )
             sampled_users.append(user)
 
         return sampled_users
@@ -163,18 +168,23 @@ class MNIST_FedAvgTask(FederatedLearningTask):
     def sample_adversaries(self) -> List[int]:
         adversaries_ids = []
         if self.params.fl_number_of_adversaries == 0:
-            logger.warning(f'Running vanilla FL, no attack.')
+            logger.warning(f"Running vanilla FL, no attack.")
         elif self.params.fl_single_epoch_attack is None:
             adversaries_ids = random.sample(
                 range(self.params.fl_total_participants),
-                self.params.fl_number_of_adversaries)
-            logger.warning(f'Attacking over multiple epochs with following '
-                           f'users compromised: {adversaries_ids}.')
+                self.params.fl_number_of_adversaries,
+            )
+            logger.warning(
+                f"Attacking over multiple epochs with following "
+                f"users compromised: {adversaries_ids}."
+            )
         else:
-            logger.warning(f'Attack only on epoch: '
-                           f'{self.params.fl_single_epoch_attack} with '
-                           f'{self.params.fl_number_of_adversaries} compromised'
-                           f' users.')
+            logger.warning(
+                f"Attack only on epoch: "
+                f"{self.params.fl_single_epoch_attack} with "
+                f"{self.params.fl_number_of_adversaries} compromised"
+                f" users."
+            )
 
         return adversaries_ids
 
@@ -188,8 +198,8 @@ class MNIST_FedAvgTask(FederatedLearningTask):
             for name, data in local_model.state_dict().items():
                 if self.check_ignored_weights(name):
                     continue
-                local_update[name] = (data - global_model.state_dict()[name])
-            
+                local_update[name] = data - global_model.state_dict()[name]
+
             local_updates.append(local_update)
 
         return local_updates
@@ -205,7 +215,7 @@ class MNIST_FedAvgTask(FederatedLearningTask):
             state_dict[name] = average_update
         model.load_state_dict(state_dict, strict=False)
         return model
-    
+
     def get_avg_model_weighted(self, weight_accumulator, total_weight):
         model = SimpleNet(num_classes=len(self.classes)).to(self.params.device)
         state_dict = {}
@@ -219,8 +229,7 @@ class MNIST_FedAvgTask(FederatedLearningTask):
         return model
 
     def dp_clip(self, local_update_tensor: torch.Tensor, update_norm):
-        if self.params.fl_dp_clip is not None and \
-                update_norm > self.params.fl_dp_clip:
+        if self.params.fl_dp_clip is not None and update_norm > self.params.fl_dp_clip:
             norm_scale = self.params.fl_dp_clip / update_norm
             local_update_tensor.mul_(norm_scale)
 
@@ -253,7 +262,12 @@ class MNIST_FedAvgTask(FederatedLearningTask):
 
     def load_data(self) -> None:
         self.classes = (0, 1, 2, 3, 4, 5, 6, 7, 8, 9)
-        self.train_dataset = torchvision.datasets.MNIST(root=self.params.data_path, train=True, download=True, transform=transforms.ToTensor())
+        self.train_dataset = torchvision.datasets.MNIST(
+            root=self.params.data_path,
+            train=True,
+            download=True,
+            transform=transforms.ToTensor(),
+        )
         train_loaders, test_loaders = self.assign_data(bias=self.params.fl_q)
         self.fl_train_loaders = train_loaders
         self.fl_test_loaders = test_loaders
@@ -268,20 +282,20 @@ class MNIST_FedAvgTask(FederatedLearningTask):
         other_group_size = (1 - bias) / (num_labels - 1)
         worker_per_group = num_workers / num_labels
 
-        #assign training data to each worker
+        # assign training data to each worker
         each_worker_data = [[] for _ in range(num_workers)]
-        each_worker_label = [[] for _ in range(num_workers)]   
+        each_worker_label = [[] for _ in range(num_workers)]
         server_data = []
-        server_label = [] 
-        
+        server_label = []
+
         # compute the labels needed for each class
-        real_dis = [1. / num_labels for _ in range(num_labels)]
+        real_dis = [1.0 / num_labels for _ in range(num_labels)]
         samp_dis = [0 for _ in range(num_labels)]
         num1 = int(server_pc * p)
         samp_dis[1] = num1
         average_num = (server_pc - num1) / (num_labels - 1)
         resid = average_num - np.floor(average_num)
-        sum_res = 0.
+        sum_res = 0.0
         for other_num in range(num_labels - 1):
             if other_num == 1:
                 continue
@@ -290,67 +304,92 @@ class MNIST_FedAvgTask(FederatedLearningTask):
             if sum_res >= 1.0:
                 samp_dis[other_num] += 1
                 sum_res -= 1
-        samp_dis[num_labels - 1] = server_pc - np.sum(samp_dis[:num_labels - 1])
+        samp_dis[num_labels - 1] = server_pc - np.sum(samp_dis[: num_labels - 1])
 
         # randomly assign the data points based on the labels
         server_counter = [0 for _ in range(num_labels)]
         for x, y in self.train_dataset:
-            upper_bound = y * (1. - bias) / (num_labels - 1) + bias
-            lower_bound = y * (1. - bias) / (num_labels - 1)
+            upper_bound = y * (1.0 - bias) / (num_labels - 1) + bias
+            lower_bound = y * (1.0 - bias) / (num_labels - 1)
             rd = np.random.random_sample()
-            
+
             if rd > upper_bound:
-                worker_group = int(np.floor((rd - upper_bound) / other_group_size) + y + 1)
+                worker_group = int(
+                    np.floor((rd - upper_bound) / other_group_size) + y + 1
+                )
             elif rd < lower_bound:
                 worker_group = int(np.floor(rd / other_group_size))
             else:
                 worker_group = y
-            
+
             if server_counter[y] < samp_dis[y]:
                 server_data.append(x)
                 server_label.append(y)
                 server_counter[y] += 1
             else:
                 rd = np.random.random_sample()
-                selected_worker = int(worker_group * worker_per_group + int(np.floor(rd * worker_per_group)))
+                selected_worker = int(
+                    worker_group * worker_per_group
+                    + int(np.floor(rd * worker_per_group))
+                )
                 each_worker_data[selected_worker].append(x)
                 each_worker_label[selected_worker].append(y)
-        
-        random_order = np.random.RandomState(seed=self.params.random_seed).permutation(num_workers)
+
+        random_order = np.random.RandomState(seed=self.params.random_seed).permutation(
+            num_workers
+        )
         each_worker_data = [each_worker_data[i] for i in random_order]
         each_worker_label = [each_worker_label[i] for i in random_order]
 
         train_loaders, test_loaders = [], []
-        transform_list = [transforms.RandomRotation((degree, degree)) for degree in self.params.fl_client_degrees]
+        transform_list = [
+            transforms.RandomRotation((degree, degree))
+            for degree in self.params.fl_client_degrees
+        ]
         for i in range(len(each_worker_data)):
-            train_set = ClientDataset(each_worker_data[i], each_worker_label[i], transform_list[i])
+            train_set = ClientDataset(
+                each_worker_data[i], each_worker_label[i], transform_list[i]
+            )
             if self.params.fl_client_data is not None:
                 tot = self.params.fl_client_data[i]
                 train_size = int(tot * self.params.fl_client_train_ratio)
                 test_size = tot - train_size
-                train_set, test_set, _ = random_split(train_set,
-                                                lengths=[train_size, test_size, len(train_set)-train_size-test_size], 
-                                                generator=torch.Generator().manual_seed(self.params.random_seed))
+                train_set, test_set, _ = random_split(
+                    train_set,
+                    lengths=[
+                        train_size,
+                        test_size,
+                        len(train_set) - train_size - test_size,
+                    ],
+                    generator=torch.Generator().manual_seed(self.params.random_seed),
+                )
             else:
                 tot = len(train_set)
                 train_size = int(tot * self.params.fl_client_train_ratio)
                 test_size = tot - train_size
-                train_set, test_set = random_split(train_set,
-                                                lengths=[train_size, test_size], 
-                                                generator=torch.Generator().manual_seed(self.params.random_seed))
+                train_set, test_set = random_split(
+                    train_set,
+                    lengths=[train_size, test_size],
+                    generator=torch.Generator().manual_seed(self.params.random_seed),
+                )
 
-            train_loader = DataLoader(train_set,
-                                      batch_size=self.params.batch_size,
-                                      shuffle=False,
-                                      drop_last=True)
-            test_loader = DataLoader(test_set,
-                                      batch_size=self.params.batch_size,
-                                      shuffle=False,
-                                      drop_last=True)
+            train_loader = DataLoader(
+                train_set,
+                batch_size=self.params.batch_size,
+                shuffle=False,
+                drop_last=True,
+            )
+            test_loader = DataLoader(
+                test_set,
+                batch_size=self.params.batch_size,
+                shuffle=False,
+                drop_last=True,
+            )
             train_loaders.append(train_loader)
             test_loaders.append(test_loader)
-        
+
         return train_loaders, test_loaders
+
 
 class ClientDataset(Dataset):
     def __init__(self, data_list, label_list, transform):

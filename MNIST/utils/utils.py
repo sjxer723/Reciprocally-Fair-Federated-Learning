@@ -20,27 +20,29 @@ def create_table(params: dict):
     data = "| name | value | \n |-----|-----|"
 
     for key, value in params.items():
-        data += '\n' + f"| {key} | {value} |"
+        data += "\n" + f"| {key} | {value} |"
 
     return data
 
+
 def create_logger():
     """
-        Setup the logging environment
+    Setup the logging environment
     """
     log = logging.getLogger()  # root logger
     log.setLevel(logging.DEBUG)
-    format_str = '%(asctime)s - %(levelname)-8s - %(message)s'
-    date_format = '%Y-%m-%d %H:%M:%S'
+    format_str = "%(asctime)s - %(levelname)-8s - %(message)s"
+    date_format = "%Y-%m-%d %H:%M:%S"
     if os.isatty(2):
-        cformat = '%(log_color)s' + format_str
-        colors = {'DEBUG': 'reset',
-                  'INFO': 'reset',
-                  'WARNING': 'bold_yellow',
-                  'ERROR': 'bold_red',
-                  'CRITICAL': 'bold_red'}
-        formatter = colorlog.ColoredFormatter(cformat, date_format,
-                                              log_colors=colors)
+        cformat = "%(log_color)s" + format_str
+        colors = {
+            "DEBUG": "reset",
+            "INFO": "reset",
+            "WARNING": "bold_yellow",
+            "ERROR": "bold_red",
+            "CRITICAL": "bold_red",
+        }
+        formatter = colorlog.ColoredFormatter(cformat, date_format, log_colors=colors)
     else:
         formatter = logging.Formatter(format_str, date_format)
     stream_handler = logging.StreamHandler()
@@ -51,6 +53,7 @@ def create_logger():
 
 def th(vector):
     return torch.tanh(vector) / 2 + 0.5
+
 
 def model2vector(model):
     nparr = np.array([])

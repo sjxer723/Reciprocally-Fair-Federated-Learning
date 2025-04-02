@@ -4,22 +4,23 @@ from typing import List, Dict
 import logging
 import torch
 import os
-logger = logging.getLogger('logger')
 
-ALL_TASKS =  ['backdoor', 'normal', 'sentinet_evasion', 'mask_norm', 'sums']
+logger = logging.getLogger("logger")
+
+ALL_TASKS = ["backdoor", "normal", "sentinet_evasion", "mask_norm", "sums"]
+
 
 @dataclass
 class Params:
-
     # Corresponds to the class module: tasks.mnist_task.MNISTTask
     # See other tasks in the task folder.
-    task: str = 'MNIST'
+    task: str = "MNIST"
 
     current_time: str = None
     name: str = None
     commit: float = None
     random_seed: int = None
-    device: str = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    device: str = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     # training params
     start_epoch: int = 0
     epochs: int = None
@@ -35,7 +36,7 @@ class Params:
     scheduler: bool = False
     scheduler_milestones: List[int] = None
     # data
-    data_path: str = '.data/'
+    data_path: str = ".data/"
     batch_size: int = 64
     test_batch_size: int = 100
     transform_train: bool = True
@@ -54,14 +55,14 @@ class Params:
     backdoor: bool = False
     backdoor_label: int = 8
     poisoning_proportion: float = 1.0  # backdoors proportion in backdoor loss
-    synthesizer: str = 'pattern'
+    synthesizer: str = "pattern"
     backdoor_dynamic_position: bool = False
 
     # losses to balance: `normal`, `backdoor`, `neural_cleanse`, `sentinet`,
     # `backdoor_multi`.
     loss_tasks: List[str] = None
 
-    loss_balance: str = 'MGDA'
+    loss_balance: str = "MGDA"
     "loss_balancing: `fixed` or `MGDA`"
 
     loss_threshold: float = None
@@ -83,7 +84,7 @@ class Params:
     # nc evasion
     nc_p_norm: int = 1
     # spectral evasion
-    spectral_similarity: 'str' = 'norm'
+    spectral_similarity: "str" = "norm"
 
     # logging
     report_train_loss: bool = True
@@ -118,7 +119,7 @@ class Params:
     fl_gamma: int = -1
     fl_server_model_path: str = None
     idtest: bool = False
-    
+
     # Clean dataset params
     clean_ratio: float = 0.1
     clean_classes: List[int] = None
@@ -142,20 +143,25 @@ class Params:
     rotation_angles: List[int] = None
     # Number of best response iterations
     num_of_br: int = 300
-    
+
     # FLTrust
     fltrust: bool = None
 
     def __post_init__(self):
         # enable logging anyways when saving statistics
-        if self.save_model or self.tb or self.save_timing or \
-                self.print_memory_consumption:
+        if (
+            self.save_model
+            or self.tb
+            or self.save_timing
+            or self.print_memory_consumption
+        ):
             self.log = True
 
         if self.log:
-            os.makedirs('saved_models', exist_ok=True)
-            self.folder_path = f'saved_models/model_' \
-                               f'{self.task}_{self.current_time}_{self.name}'
+            os.makedirs("saved_models", exist_ok=True)
+            self.folder_path = (
+                f"saved_models/model_{self.task}_{self.current_time}_{self.name}"
+            )
 
         self.running_losses = defaultdict(list)
         self.running_scales = defaultdict(list)
@@ -163,8 +169,9 @@ class Params:
 
         for t in self.loss_tasks:
             if t not in ALL_TASKS:
-                raise ValueError(f'Task {t} is not part of the supported '
-                                 f'tasks: {ALL_TASKS}.')
+                raise ValueError(
+                    f"Task {t} is not part of the supported tasks: {ALL_TASKS}."
+                )
 
     def to_dict(self):
         return asdict(self)

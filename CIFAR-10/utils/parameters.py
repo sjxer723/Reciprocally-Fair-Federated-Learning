@@ -3,17 +3,25 @@ from dataclasses import dataclass, asdict
 from typing import List, Dict
 import logging
 import torch
-logger = logging.getLogger('logger')
 
-ALL_TASKS =  ['backdoor', 'normal', 'sentinet_evasion', #'spectral_evasion',
-                           'neural_cleanse', 'mask_norm', 'sums', 'neural_cleanse_part1']
+logger = logging.getLogger("logger")
+
+ALL_TASKS = [
+    "backdoor",
+    "normal",
+    "sentinet_evasion",  #'spectral_evasion',
+    "neural_cleanse",
+    "mask_norm",
+    "sums",
+    "neural_cleanse_part1",
+]
+
 
 @dataclass
 class Params:
-
     # Corresponds to the class module: tasks.mnist_task.MNISTTask
     # See other tasks in the task folder.
-    task: str = 'MNIST'
+    task: str = "MNIST"
 
     current_time: str = None
     name: str = None
@@ -21,7 +29,7 @@ class Params:
     commit: float = None
     random_seed: int = None
     print("CUDA avaiable?", torch.cuda.is_available())
-    device: str = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    device: str = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     # training params
     start_epoch: int = 1
     epochs: int = None
@@ -37,7 +45,7 @@ class Params:
     scheduler: bool = False
     scheduler_milestones: List[int] = None
     # data
-    data_path: str = '.data/'
+    data_path: str = ".data/"
     batch_size: int = 64
     test_batch_size: int = 100
     transform_train: bool = True
@@ -56,14 +64,14 @@ class Params:
     backdoor: bool = False
     backdoor_label: int = 8
     poisoning_proportion: float = 1.0  # backdoors proportion in backdoor loss
-    synthesizer: str = 'pattern'
+    synthesizer: str = "pattern"
     backdoor_dynamic_position: bool = False
 
     # losses to balance: `normal`, `backdoor`, `neural_cleanse`, `sentinet`,
     # `backdoor_multi`.
     loss_tasks: List[str] = None
 
-    loss_balance: str = 'MGDA'
+    loss_balance: str = "MGDA"
     "loss_balancing: `fixed` or `MGDA`"
 
     loss_threshold: float = None
@@ -85,7 +93,7 @@ class Params:
     # nc evasion
     nc_p_norm: int = 1
     # spectral evasion
-    spectral_similarity: 'str' = 'norm'
+    spectral_similarity: "str" = "norm"
 
     # logging
     report_train_loss: bool = True
@@ -130,13 +138,18 @@ class Params:
 
     def __post_init__(self):
         # enable logging anyways when saving statistics
-        if self.save_model or self.tb or self.save_timing or \
-                self.print_memory_consumption:
+        if (
+            self.save_model
+            or self.tb
+            or self.save_timing
+            or self.print_memory_consumption
+        ):
             self.log = True
 
         if self.log:
-            self.folder_path = f'saved_models/model_' \
-                               f'{self.task}_{self.current_time}_{self.name}'
+            self.folder_path = (
+                f"saved_models/model_{self.task}_{self.current_time}_{self.name}"
+            )
 
         self.running_losses = defaultdict(list)
         self.running_scales = defaultdict(list)
@@ -144,8 +157,9 @@ class Params:
 
         for t in self.loss_tasks:
             if t not in ALL_TASKS:
-                raise ValueError(f'Task {t} is not part of the supported '
-                                 f'tasks: {ALL_TASKS}.')
+                raise ValueError(
+                    f"Task {t} is not part of the supported tasks: {ALL_TASKS}."
+                )
 
     def to_dict(self):
         return asdict(self)

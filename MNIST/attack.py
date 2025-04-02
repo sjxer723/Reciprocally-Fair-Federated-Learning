@@ -10,7 +10,7 @@ from losses.loss_functions import compute_all_losses_and_grads
 from utils.min_norm_solvers import MGDASolver
 from utils.parameters import Params
 
-logger = logging.getLogger('logger')
+logger = logging.getLogger("logger")
 
 
 class Attack:
@@ -35,14 +35,18 @@ class Attack:
         :return:
         """
         batch = batch.clip(self.params.clip_batch)
-        loss_tasks = self.params.loss_tasks.copy() if attack else ['normal']
-        batch_back = self.synthesizer.make_backdoor_batch(batch, attack=attack, ratio=ratio)
+        loss_tasks = self.params.loss_tasks.copy() if attack else ["normal"]
+        batch_back = self.synthesizer.make_backdoor_batch(
+            batch, attack=attack, ratio=ratio
+        )
         scale = dict()
 
-        if self.params.loss_threshold and (np.mean(self.loss_hist) >= self.params.loss_threshold
-                                           or len(self.loss_hist) < 1000):
-            loss_tasks = ['normal']
-            
+        if self.params.loss_threshold and (
+            np.mean(self.loss_hist) >= self.params.loss_threshold
+            or len(self.loss_hist) < 1000
+        ):
+            loss_tasks = ["normal"]
+
         scale = {loss_tasks[0]: 1.0}
         self.loss_hist.append(loss_values[list(loss_values.keys())[0]].item())
         self.loss_hist = self.loss_hist[-1000:]
@@ -59,7 +63,7 @@ class Attack:
                 blind_loss = scale[t] * loss_values[t]
             else:
                 blind_loss += scale[t] * loss_values[t]
-        self.params.running_losses['total'].append(blind_loss.item())
+        self.params.running_losses["total"].append(blind_loss.item())
         return blind_loss
 
     def fl_scale_update(self, local_update: Dict[str, torch.Tensor], scale=None):

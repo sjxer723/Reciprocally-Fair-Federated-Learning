@@ -2,6 +2,7 @@ import numpy as np
 from scipy.optimize import curve_fit
 import matplotlib.pyplot as plt
 
+
 def curve_function(x, alpha, beta):
     return 1 - alpha * x**beta
 

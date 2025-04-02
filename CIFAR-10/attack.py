@@ -9,7 +9,7 @@ from losses.loss_functions import compute_all_losses_and_grads
 from utils.min_norm_solvers import MGDASolver
 from utils.parameters import Params
 
-logger = logging.getLogger('logger')
+logger = logging.getLogger("logger")
 
 
 class Attack:
@@ -34,44 +34,56 @@ class Attack:
         :return:
         """
         batch = batch.clip(self.params.clip_batch)
-        loss_tasks = self.params.loss_tasks.copy() if attack else ['normal']
+        loss_tasks = self.params.loss_tasks.copy() if attack else ["normal"]
         batch_back = self.synthesizer.make_backdoor_batch(batch, attack=attack)
         scale = dict()
 
-        if 'neural_cleanse' in loss_tasks:
+        if "neural_cleanse" in loss_tasks:
             self.neural_cleanse_part1(model, batch, batch_back)
 
-        if self.params.loss_threshold and (np.mean(self.loss_hist) >= self.params.loss_threshold
-                                           or len(self.loss_hist) < 1000):
-            loss_tasks = ['normal']
+        if self.params.loss_threshold and (
+            np.mean(self.loss_hist) >= self.params.loss_threshold
+            or len(self.loss_hist) < 1000
+        ):
+            loss_tasks = ["normal"]
 
         if len(loss_tasks) == 1:
             loss_values, grads = compute_all_losses_and_grads(
                 loss_tasks,
-                self, model, criterion, batch, batch_back, compute_grad=False
+                self,
+                model,
+                criterion,
+                batch,
+                batch_back,
+                compute_grad=False,
             )
-        elif self.params.loss_balance == 'MGDA':
-
+        elif self.params.loss_balance == "MGDA":
             loss_values, grads = compute_all_losses_and_grads(
-                loss_tasks,
-                self, model, criterion, batch, batch_back, compute_grad=True)
+                loss_tasks, self, model, criterion, batch, batch_back, compute_grad=True
+            )
             if len(loss_tasks) > 1:
-                scale = MGDASolver.get_scales(grads, loss_values,
-                                              self.params.mgda_normalize,
-                                              loss_tasks)
-        elif self.params.loss_balance == 'fixed':
+                scale = MGDASolver.get_scales(
+                    grads, loss_values, self.params.mgda_normalize, loss_tasks
+                )
+        elif self.params.loss_balance == "fixed":
             loss_values, grads = compute_all_losses_and_grads(
                 loss_tasks,
-                self, model, criterion, batch, batch_back, compute_grad=False)
+                self,
+                model,
+                criterion,
+                batch,
+                batch_back,
+                compute_grad=False,
+            )
 
             for t in loss_tasks:
                 scale[t] = self.params.fixed_scales[t]
         else:
-            raise ValueError(f'Please choose between `MGDA` and `fixed`.')
+            raise ValueError(f"Please choose between `MGDA` and `fixed`.")
 
         if len(loss_tasks) == 1:
             scale = {loss_tasks[0]: 1.0}
-        self.loss_hist.append(loss_values['normal'].item())
+        self.loss_hist.append(loss_values["normal"].item())
         self.loss_hist = self.loss_hist[-1000:]
         blind_loss = self.scale_losses(loss_tasks, loss_values, scale)
 
@@ -86,7 +98,7 @@ class Attack:
                 blind_loss = scale[t] * loss_values[t]
             else:
                 blind_loss += scale[t] * loss_values[t]
-        self.params.running_losses['total'].append(blind_loss.item())
+        self.params.running_losses["total"].append(blind_loss.item())
         return blind_loss
 
     def neural_cleanse_part1(self, model, batch, batch_back):
@@ -96,25 +108,24 @@ class Attack:
         self.nc_model.switch_grads(True)
         model.switch_grads(False)
         output = model(self.nc_model(batch.inputs))
-        nc_tasks = ['neural_cleanse_part1', 'mask_norm']
+        nc_tasks = ["neural_cleanse_part1", "mask_norm"]
 
-        criterion = torch.nn.CrossEntropyLoss(reduction='none')
+        criterion = torch.nn.CrossEntropyLoss(reduction="none")
 
-        loss_values, grads = compute_all_losses_and_grads(nc_tasks,
-                                                          self, model,
-                                                          criterion, batch,
-                                                          batch_back,
-                                                          compute_grad=False
-                                                          )
+        loss_values, grads = compute_all_losses_and_grads(
+            nc_tasks, self, model, criterion, batch, batch_back, compute_grad=False
+        )
         # Using NC paper params
         logger.info(loss_values)
-        loss = 0.999 * loss_values['neural_cleanse_part1'] + 0.001 * loss_values['mask_norm']
+        loss = (
+            0.999 * loss_values["neural_cleanse_part1"]
+            + 0.001 * loss_values["mask_norm"]
+        )
         loss.backward()
         self.nc_optim.step()
 
         self.nc_model.switch_grads(False)
         model.switch_grads(True)
-
 
     def fl_scale_update(self, local_update: Dict[str, torch.Tensor]):
         for name, value in local_update.items():

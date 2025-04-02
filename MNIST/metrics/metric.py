@@ -4,7 +4,7 @@ from typing import Dict, Any
 
 import numpy as np
 
-logger = logging.getLogger('logger')
+logger = logging.getLogger("logger")
 
 
 class Metric:
@@ -22,8 +22,8 @@ class Metric:
 
     def __repr__(self):
         metrics = self.get_value()
-        text = [f'{key}: {val:.2f}' for key, val in metrics.items()]
-        return f'{self.name}: ' + ','.join(text)
+        text = [f"{key}: {val:.2f}" for key, val in metrics.items()]
+        return f"{self.name}: " + ",".join(text)
 
     def compute_metric(self, outputs, labels) -> Dict[str, Any]:
         raise NotImplemented
@@ -42,21 +42,24 @@ class Metric:
 
     def get_main_metric_value(self):
         if not self.main_metric_name:
-            raise ValueError(f'For metric {self.name} define '
-                             f'attribute main_metric_name.')
+            raise ValueError(
+                f"For metric {self.name} define attribute main_metric_name."
+            )
         metrics = self.get_value()
         return metrics[self.main_metric_name]
 
     def reset_metric(self):
         self.running_metric = defaultdict(list)
 
-    def plot(self, tb_writer, step, tb_prefix=''):
+    def plot(self, tb_writer, step, tb_prefix=""):
         if tb_writer is not None and self.plottable:
             metrics = self.get_value()
             for key, value in metrics.items():
-                tb_writer.add_scalar(tag=f'{tb_prefix}/{self.name}_{key}',
-                                     scalar_value=value,
-                                          global_step=step)
+                tb_writer.add_scalar(
+                    tag=f"{tb_prefix}/{self.name}_{key}",
+                    scalar_value=value,
+                    global_step=step,
+                )
             tb_writer.flush()
         else:
             return False

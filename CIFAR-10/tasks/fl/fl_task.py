@@ -11,13 +11,14 @@ import logging
 from torch.nn import Module
 
 from tasks.task import Task
-logger = logging.getLogger('logger')
+
+logger = logging.getLogger("logger")
 
 
 class FederatedLearningTask(Task):
     fl_train_loaders: List[Any] = None
     fl_test_loaders: List[Any] = None
-    ignored_weights = ['num_batches_tracked']#['tracked', 'running']
+    ignored_weights = ["num_batches_tracked"]  # ['tracked', 'running']
     adversaries: List[int] = None
 
     def init_task(self):
@@ -41,12 +42,16 @@ class FederatedLearningTask(Task):
             train_loader = self.fl_train_loaders[user_id]
             test_loader = self.fl_test_loaders[user_id]
             # compromised = self.check_user_compromised(user_id)
-            user = FLUser(user_id, compromised=False,
-                          train_loader=train_loader, test_loader=test_loader)
+            user = FLUser(
+                user_id,
+                compromised=False,
+                train_loader=train_loader,
+                test_loader=test_loader,
+            )
             all_users.append(user)
 
         return all_users
-    
+
     def get_empty_accumulator(self):
         weight_accumulator = dict()
         for name, data in self.model.state_dict().items():
@@ -55,8 +60,8 @@ class FederatedLearningTask(Task):
 
     def sample_users_for_round(self) -> List[FLUser]:
         sampled_ids = random.sample(
-            range(self.params.fl_total_participants),
-            self.params.fl_no_models)
+            range(self.params.fl_total_participants), self.params.fl_no_models
+        )
         sampled_users = []
         for pos, user_id in enumerate(sampled_ids):
             train_loader = self.fl_train_loaders[user_id]
@@ -81,8 +86,9 @@ class FederatedLearningTask(Task):
             if epoch == self.params.fl_single_epoch_attack:
                 if pos < self.params.fl_number_of_adversaries:
                     compromised = True
-                    logger.warning(f'Attacking once at epoch {epoch}. Compromised'
-                                   f' user: {user_id}.')
+                    logger.warning(
+                        f"Attacking once at epoch {epoch}. Compromised user: {user_id}."
+                    )
         else:
             compromised = user_id in self.adversaries
         return compromised
@@ -90,20 +96,26 @@ class FederatedLearningTask(Task):
     def sample_adversaries(self) -> List[int]:
         adversaries_ids = []
         if self.params.fl_number_of_adversaries == 0:
-            logger.warning(f'Running vanilla FL, no attack.')
+            logger.warning(f"Running vanilla FL, no attack.")
         elif self.params.fl_single_epoch_attack is None:
             adversaries_ids = random.sample(
                 range(self.params.fl_total_participants),
-                self.params.fl_number_of_adversaries)
-            logger.warning(f'Attacking over multiple epochs with following '
-                           f'users compromised: {adversaries_ids}.')
+                self.params.fl_number_of_adversaries,
+            )
+            logger.warning(
+                f"Attacking over multiple epochs with following "
+                f"users compromised: {adversaries_ids}."
+            )
         else:
-            logger.warning(f'Attack only on epoch: '
-                           f'{self.params.fl_single_epoch_attack} with '
-                           f'{self.params.fl_number_of_adversaries} compromised'
-                           f' users.')
+            logger.warning(
+                f"Attack only on epoch: "
+                f"{self.params.fl_single_epoch_attack} with "
+                f"{self.params.fl_number_of_adversaries} compromised"
+                f" users."
+            )
 
         return adversaries_ids
+
     def get_model_optimizer(self, model):
         local_model = deepcopy(model)
         local_model = local_model.to(self.params.device)
@@ -123,7 +135,9 @@ class FederatedLearningTask(Task):
         for name, data in local_model.state_dict().items():
             if self.check_ignored_weights(name):
                 continue
-            local_update[name] = (data - global_model.state_dict()[name].to(self.params.device))
+            local_update[name] = data - global_model.state_dict()[name].to(
+                self.params.device
+            )
             # local_update[name] = (data - global_model.state_dict()[name])
 
         return local_update
@@ -132,7 +146,7 @@ class FederatedLearningTask(Task):
         update_norm = self.get_update_norm(local_update)
         for name, value in local_update.items():
             self.dp_clip(value, update_norm)
-            weight_accumulator[name].add_(value) # accumulate the updates
+            weight_accumulator[name].add_(value)  # accumulate the updates
 
     def update_global_model(self, weight_accumulator, global_model: Module):
         for name, sum_update in weight_accumulator.items():
@@ -140,18 +154,21 @@ class FederatedLearningTask(Task):
                 continue
             scale = self.params.fl_eta / self.params.fl_total_participants
             average_update = scale * sum_update
-            self.dp_add_noise(average_update.to(self.params.device))  # add noise if DP is enabled
-            model_weight = global_model.state_dict()[name].to(self.params.device)  # get the current weight of the global model
+            self.dp_add_noise(
+                average_update.to(self.params.device)
+            )  # add noise if DP is enabled
+            model_weight = global_model.state_dict()[name].to(
+                self.params.device
+            )  # get the current weight of the global model
 
             model_weight.add_(average_update)
             global_model.state_dict()[name].copy_(model_weight)
-            
+
             # model_weight = global_model.state_dict()[name]
             # model_weight.add_(average_update.to(self.params.device))  # update the global model
 
     def dp_clip(self, local_update_tensor: torch.Tensor, update_norm):
-        if self.params.fl_diff_privacy and \
-                update_norm > self.params.fl_dp_clip:
+        if self.params.fl_diff_privacy and update_norm > self.params.fl_dp_clip:
             norm_scale = self.params.fl_dp_clip / update_norm
             local_update_tensor.mul_(norm_scale)
 
