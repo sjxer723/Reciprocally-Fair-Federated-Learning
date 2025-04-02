@@ -1,5 +1,4 @@
 task: FashionMNIST_FedAvg
-synthesizer: Block
 random_seed: 0
 
 
@@ -12,10 +11,6 @@ epochs: 200
 save_on_epochs: [100, 200, 300]
 optimizer: SGD
 log_interval: 100
-scheduler: False
-
-poisoning_proportion: 1
-backdoor_label: 8
 
 loss_balance: fixed
 fixed_scales: {'backdoor': 0.5, 'normal': 0.5}

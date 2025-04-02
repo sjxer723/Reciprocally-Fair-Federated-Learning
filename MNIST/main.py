@@ -23,30 +23,9 @@ max_resource = 100
 d_s = 5
 costs = []
 delta = 10
-alpha = 0.384
-beta = 0.4
 s_lr = 100
 s_delta = 10
 cost_scalar_beta = 0.8
-
-
-def a(s_all):
-    return 1 - (alpha * 1.0) / pow(sum(s_all), beta)
-
-
-def a_derivative(s_all):
-    return (alpha * beta * 1.0) / pow(sum(s_all), beta + 1)
-
-
-def round_to_nearest_factor(num, factor):
-    if factor == 0:
-        raise ValueError("Factor must be non-zero.")
-    nearest_lower_multiple = (num // factor) * factor
-    remainder = num % factor
-    if remainder >= factor / 2:
-        return nearest_lower_multiple + factor
-    else:
-        return nearest_lower_multiple
 
 
 def train(
@@ -54,10 +33,7 @@ def train(
     epoch,
     model,
     optimizer,
-    train_loader,
-    attack=False,
-    ratio=None,
-    report=False,
+    train_loader
 ):
     criterion = hlpr.task.criterion
     model.train()
@@ -65,12 +41,12 @@ def train(
     for i, data in enumerate(train_loader):
         batch = hlpr.task.get_batch(i, data)
         model.zero_grad()
-        loss = hlpr.attack.compute_blind_loss(model, criterion, batch, attack, ratio)
+        logits = model(batch.inputs)
+        loss = criterion(logits, batch.labels)
         loss.backward()
         optimizer.step()
 
     return
-
 
 def test(hlpr: Helper, model, test_loader):
     model.eval()
@@ -85,7 +61,6 @@ def test(hlpr: Helper, model, test_loader):
         test_acc, test_loss = hlpr.task.get_metrics(metrics)
 
     return test_acc, test_loss
-
 
 class ClientThread(Thread):
     def __init__(self, user, hlpr, global_model, s_vec, task, sampled_agents, _lr=0.01):
@@ -140,34 +115,6 @@ class ClientThread(Thread):
                     grad_eps[name] = param.grad / (int(self.s) + s_delta)
 
             self._return = self.user.user_id, grad, grad_eps
-
-        elif self.task == "Update":
-            s_all = self.s_vec
-            fl = FLInstance(len(self.s_vec), self.s_vec, alpha, beta, 0.01)
-            if self.hlpr.params.method == "br-shap":
-                # FedBR-SV, ∂d/∂s = ∂φ/∂s - c
-                # d = fl.compute_shapley_value_derivative(self.id) - self.cost_gradient()
-                raise ValueError("Unsupported method!")
-            elif self.hlpr.params.method == "br":
-                # FedBR, ∂d/∂s = ∂a/∂s - c
-                d = a_derivative(s_all.values()) - self.cost_gradient()
-            elif self.hlpr.params.method == "br-bg":
-                # FedBR-BG, ∂d/∂s = ∂a/∂s - (1-β)*c
-                d = (
-                    a_derivative(s_all.values())
-                    - (1 - cost_scalar_beta) * self.cost_gradient()
-                )
-            else:
-                s_all_add_delta_s = s_all.copy()
-                s_all_add_delta_s[self.id] += d_s
-                d = (
-                    a(s_all_add_delta_s.values()) - a(s_all.values())
-                ) / d_s - self.cost_gradient()
-            s_ = self.s + delta * d
-            if not (s_ > max_resource or s_ < 0):
-                self.s = s_
-            self._return = self.id, self.s
-
         elif self.task == "Test":
             self._return = self.id, self.test(self.model)
         else:

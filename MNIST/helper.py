@@ -11,9 +11,6 @@ import numpy as np
 import torch
 import yaml
 from torch.utils.tensorboard import SummaryWriter
-
-from attack import Attack
-from synthesizers.synthesizer import Synthesizer
 from tasks.fl.fl_task import FederatedLearningTask
 from tasks.task import Task
 from utils.parameters import Params
@@ -25,8 +22,6 @@ logger = logging.getLogger("logger")
 class Helper:
     params: Params = None
     task: Union[Task, FederatedLearningTask] = None
-    synthesizer: Synthesizer = None
-    attack: Attack = None
     tb_writer: SummaryWriter = None
 
     def __init__(self, params):
@@ -45,8 +40,6 @@ class Helper:
 
         self.make_folders()
         self.make_task()
-        self.make_synthesizer()
-        self.attack = Attack(self.params, self.synthesizer)
         self.best_loss = float("inf")
 
     def make_task(self):
@@ -70,22 +63,6 @@ class Helper:
                 f"Task in {path}"
             )
         self.task = task_class(self.params)
-
-    def make_synthesizer(self):
-        name_lower = self.params.synthesizer.lower()
-        name_cap = self.params.synthesizer
-        module_name = f"synthesizers.{name_lower}_synthesizer"
-        try:
-            synthesizer_module = importlib.import_module(module_name)
-            task_class = getattr(synthesizer_module, f"{name_cap}Synthesizer")
-        except (ModuleNotFoundError, AttributeError):
-            raise ModuleNotFoundError(
-                f"The synthesizer: {self.params.synthesizer}"
-                f" should be defined as a class "
-                f"{name_cap}Synthesizer in "
-                f"synthesizers/{name_lower}_synthesizer.py"
-            )
-        self.synthesizer = task_class(self.task)
 
     def make_folders(self):
         log = create_logger()

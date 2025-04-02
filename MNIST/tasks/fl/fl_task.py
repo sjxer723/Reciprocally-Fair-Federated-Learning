@@ -42,46 +42,21 @@ class FederatedLearningTask(Task):
         return weight_accumulator
 
     def sample_users_for_round(self, epoch) -> List[FLUser]:
-        sampled_ids = range(self.params.fl_total_participants)
-        # sampled_ids = random.sample(
-        #     range(self.params.fl_total_participants),
-        #     self.params.fl_no_models)
-
+        sampled_ids = random.sample(
+            range(self.params.fl_total_participants),
+            self.params.fl_no_models)
         sampled_users = []
-        for pos, user_id in enumerate(sampled_ids):
+        for _, user_id in enumerate(sampled_ids):
             train_loader = self.fl_train_loaders[user_id]
             test_loader = self.fl_test_loaders[user_id]
-            compromised = self.check_user_compromised(epoch, pos, user_id)
             user = FLUser(
                 user_id,
-                compromised=compromised,
                 train_loader=train_loader,
                 test_loader=test_loader,
             )
             sampled_users.append(user)
 
         return sampled_users
-
-    def check_user_compromised(self, epoch, pos, user_id):
-        """Check if the sampled user is compromised for the attack.
-
-        If single_epoch_attack is defined (eg not None) then ignore
-        :param epoch:
-        :param pos:
-        :param user_id:
-        :return:
-        """
-        compromised = False
-        if self.params.fl_single_epoch_attack is not None:
-            if epoch == self.params.fl_single_epoch_attack:
-                if pos < self.params.fl_number_of_adversaries:
-                    compromised = True
-                    logger.warning(
-                        f"Attacking once at epoch {epoch}. Compromised user: {user_id}."
-                    )
-        else:
-            compromised = user_id in self.adversaries
-        return compromised
 
     def sample_adversaries(self) -> List[int]:
         adversaries_ids = []

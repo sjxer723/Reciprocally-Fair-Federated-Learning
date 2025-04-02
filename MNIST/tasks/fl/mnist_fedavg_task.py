@@ -36,7 +36,6 @@ class MNIST_FedAvgTask:
 
     models: Module = None
     criterion: Module = None
-    scheduler: CosineAnnealingLR = None
     metrics: List[Metric] = None
 
     "Generic normalization for input data."
@@ -45,8 +44,7 @@ class MNIST_FedAvgTask:
     fl_train_loaders: List[Any] = None
     fl_test_loaders: List[Any] = None
     ignored_weights = ["num_batches_tracked"]  # ['tracked', 'running']
-    adversaries: List[int] = None
-
+    
     def __init__(self, params: Params):
         self.params = params
         self.init_task()
@@ -144,8 +142,6 @@ class MNIST_FedAvgTask:
         self.load_data()
         self.model = self.build_model()
         self.criterion = self.make_criterion()
-        # self.adversaries = self.sample_adversaries()
-
         self.metrics = [AccuracyMetric(), TestLossMetric(self.criterion)]
         self.set_input_shape()
         return
@@ -165,7 +161,6 @@ class MNIST_FedAvgTask:
         for pos, user_id in enumerate(sampled_ids):
             train_loader = self.fl_train_loaders[user_id]
             test_loader = self.fl_test_loaders[user_id]
-            # compromised = self.check_user_compromised(user_id)
             user = FLUser(user_id, train_loader=train_loader, test_loader=test_loader)
             sampled_users.append(user)
 
@@ -182,43 +177,7 @@ class MNIST_FedAvgTask:
             all_users.append(user)
 
         return all_users
-
-    def check_user_compromised(self, user_id):
-        """Check if the sampled user is compromised for the attack.
-
-        If single_epoch_attack is defined (eg not None) then ignore
-        :param epoch:
-        :param pos:
-        :param user_id:
-        :return:
-        """
-        compromised = user_id in self.adversaries
-
-        return compromised
-
-    def sample_adversaries(self) -> List[int]:
-        adversaries_ids = []
-        if self.params.fl_number_of_adversaries == 0:
-            logger.warning(f"Running vanilla FL, no attack.")
-        elif self.params.fl_single_epoch_attack is None:
-            adversaries_ids = random.sample(
-                range(self.params.fl_total_participants),
-                self.params.fl_number_of_adversaries,
-            )
-            logger.warning(
-                f"Attacking over multiple epochs with following "
-                f"users compromised: {adversaries_ids}."
-            )
-        else:
-            logger.warning(
-                f"Attack only on epoch: "
-                f"{self.params.fl_single_epoch_attack} with "
-                f"{self.params.fl_number_of_adversaries} compromised"
-                f" users."
-            )
-
-        return adversaries_ids
-
+    
     def copy_params(self, global_models, local_models):
         for i in range(len(global_models)):
             global_model = global_models[i]

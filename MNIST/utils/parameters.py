@@ -34,7 +34,6 @@ class Params:
     momentum: float = None
     optimizer: str = None
     scheduler: bool = False
-    scheduler_milestones: List[int] = None
     # data
     data_path: str = ".data/"
     batch_size: int = 64
@@ -49,14 +48,6 @@ class Params:
     # gradient shaping/DP params
     dp: bool = None
     dp_clip: float = None
-    dp_sigma: float = None
-
-    # attack params
-    backdoor: bool = False
-    backdoor_label: int = 8
-    poisoning_proportion: float = 1.0  # backdoors proportion in backdoor loss
-    synthesizer: str = "pattern"
-    backdoor_dynamic_position: bool = False
 
     # losses to balance: `normal`, `backdoor`, `neural_cleanse`, `sentinet`,
     # `backdoor_multi`.
@@ -71,16 +62,10 @@ class Params:
     # `loss+`, `l2`
     mgda_normalize: str = None
     fixed_scales: Dict[str, float] = None
-
-    # relabel images with poison_number
-    poison_images: List[int] = None
-    poison_images_test: List[int] = None
+    
     # optimizations:
-    alternating_attack: float = None
     clip_batch: float = None
-    # Disable BatchNorm and Dropout
-    switch_to_eval: float = None
-
+    
     # nc evasion
     nc_p_norm: int = 1
     # spectral evasion
@@ -92,7 +77,6 @@ class Params:
     tb: bool = False
     save_model: bool = None
     save_on_epochs: List[int] = None
-    save_scale_values: bool = False
     print_memory_consumption: bool = False
     save_timing: bool = False
     timing_data = None
@@ -116,8 +100,6 @@ class Params:
     fl_weight_scale: int = 1
     fl_server_degrees: List[int] = None
     fl_client_data: List[int] = None
-    fl_gamma: int = -1
-    fl_server_model_path: str = None
     idtest: bool = False
 
     # Clean dataset params
@@ -125,17 +107,9 @@ class Params:
     clean_classes: List[int] = None
 
     # Defense params
-    ours: bool = None
-    ours_lbd: float = 1
     fl_client_train_ratio: float = None
-    r_interval: float = None
-    nc_steps: int = 1000
     max_threads: int = 100
-    attack_start_epoch: int = 0
-    clean_set_dataset: str = None
-    defense: str = None
-    static: bool = False
-
+    
     # Method
     method: str = ""
 
@@ -143,9 +117,6 @@ class Params:
     rotation_angles: List[int] = None
     # Number of best response iterations
     num_of_br: int = 300
-
-    # FLTrust
-    fltrust: bool = None
 
     def __post_init__(self):
         # enable logging anyways when saving statistics
