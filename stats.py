@@ -4,7 +4,7 @@ import pandas as pd
 from MNIST.shapley_value import FLInstance
 
 total_datashares = {
-    "skin": 4000,
+    "Skin": 4000,
     "Quadratic": 2000,
     "CIFAR-10": 810,  # Example value, replace with actual total data shares for CIFAR-10
     "FashionMNIST": 5440,  # Example value, replace with actual total data shares for FashionMNIST
@@ -14,7 +14,7 @@ total_datashares = {
 
 def statistics(path, prefix, name, num_of_clients=30, num_of_types=3):
     all_results = {m: [] for m in ["br", "br-bg", "br-shap"]}
-    avg_statistics, median_statistics = [], []
+    avg_statistics, median_statistics, deviation_results = [], [], []
     num_of_attempts = 3
     num_of_clients = num_of_clients
     num_of_types = num_of_types
@@ -117,6 +117,8 @@ def statistics(path, prefix, name, num_of_clients=30, num_of_types=3):
                     / all_results["br"][i]["Accuracy"]
                 )
 
+    print(all_results['br-shap'])
+
     for m in ["br", "br-bg", "br-shap"]:
         # print(all_results[m][0])
         result_for_m = dict()
@@ -138,17 +140,33 @@ def statistics(path, prefix, name, num_of_clients=30, num_of_types=3):
             )[1]
         median_statistics.append(result_for_m)
 
+        result_for_m = dict()
+        result_for_m["Benchmark"] = name
+        result_for_m["Method"] = m
+        for key in all_results[m][0].keys():
+            # Collect deviation results
+            values = [all_results[m][i][key] for i in range(num_of_attempts)]
+            if len(values) > 1:
+                result_for_m[key] = (
+                    sum([(x - sum(values) / len(values)) ** 2 for x in values]) / (len(values) - 1)
+                ) ** 0.5
+            else:
+                result_for_m[key] = 0.0
+        deviation_results.append(result_for_m)
+    
     avg_df = pd.DataFrame(avg_statistics)
     avg_df = avg_df.round(3)
     median_df = pd.DataFrame(median_statistics)
     median_df = median_df.round(3)
+    deviation_df = pd.DataFrame(deviation_results)
+    deviation_df = deviation_df.round(3)
 
-    return avg_df, median_df
+    return avg_df, median_df, deviation_df
 
 
 info = [
     ("Quadratic-Regression/out/", "quad_fed", "Quadratic"),
-    ("Quadratic-Regression/out/", "skin_fed", "Quadratic"),
+    ("Quadratic-Regression/out/", "skin_fed", "Skin"),
     ("CIFAR-10/out", "CifarFed_non_iid_fl_results", "CIFAR-10"),
     (
         "MNIST/out/FashionMNIST",
@@ -159,15 +177,18 @@ info = [
 ]
 
 for path, prefix, name in info:
-    if name == "Quadratic":
-        avg_df, median_df = statistics(path, prefix, name, 2, 2)
+    if name == "Quadratic" or name == "Skin":
+        avg_df, median_df, derivation_df = statistics(path, prefix, name, 2, 2)
     else:
-        avg_df, median_df = statistics(path, prefix, name)
+        avg_df, median_df, derivation_df = statistics(path, prefix, name)
     avg_df.to_csv(os.path.join(path, f"{prefix}_avg_statistics.csv"), index=False)
     median_df.to_csv(os.path.join(path, f"{prefix}_median_statistics.csv"), index=False)
+    derivation_df.to_csv(os.path.join(path, f"{prefix}_derivation_statistics.csv"), index=False)
 
     print(f"Average Statistics for {name}:")
     print(avg_df)
     print(f"Median Statistics for {name}:")
     print(median_df)
+    print(f"Derivation Statistics for {name}:")
+    print(derivation_df)
     print("--------------------------------------------------")
